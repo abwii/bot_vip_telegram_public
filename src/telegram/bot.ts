@@ -45,6 +45,7 @@ export class TelegramBot {
         `/status - Voir votre statut VIP\n` +
         `/plans - Voir les plans disponibles\n` +
         `/cancel - Annuler votre abonnement\n` +
+        `/unsubscribe - Se désinscrire du VIP\n` +
         `/help - Aide`
       );
     });
@@ -144,6 +145,36 @@ export class TelegramBot {
       );
     });
 
+    // Commande de désinscription
+    this.bot.command('unsubscribe', async (ctx) => {
+      const user = ctx.from;
+      if (!user) return;
+
+      const dbUser = await User.findOne({ telegramId: user.id });
+
+      if (!dbUser || !dbUser.isVip) {
+        await ctx.reply(
+          '❌ Vous n\'avez pas d\'accès VIP actif.\n\n' +
+          'Rien à désinscrire.'
+        );
+        return;
+      }
+
+      await ctx.reply(
+        '⚠️ Êtes-vous sûr de vouloir vous désinscrire du VIP ?\n\n' +
+        '• Votre accès VIP sera immédiatement révoqué\n' +
+        '• Vous serez retiré du groupe VIP\n' +
+        '• Cette action est irréversible\n\n' +
+        'Si vous avez un abonnement actif, pensez à utiliser /cancel pour l\'annuler d\'abord.',
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback('✅ Confirmer la désinscription', 'unsubscribe_confirm'),
+            Markup.button.callback('❌ Annuler', 'unsubscribe_abort'),
+          ],
+        ])
+      );
+    });
+
     // Commande d'aide
     this.bot.command('help', async (ctx) => {
       await ctx.reply(
@@ -154,6 +185,7 @@ export class TelegramBot {
         '/status - Voir votre statut\n' +
         '/plans - Plans disponibles\n' +
         '/cancel - Annuler l\'abonnement\n' +
+        '/unsubscribe - Se désinscrire du VIP\n' +
         '/help - Cette aide\n\n' +
         '💳 Moyens de paiement :\n' +
         '• PayPal\n' +
@@ -364,6 +396,47 @@ export class TelegramBot {
     this.bot.action('cancel_abort', async (ctx) => {
       await ctx.answerCbQuery();
       await ctx.reply('✅ Annulation abandonnée. Votre abonnement reste actif.');
+    });
+
+    // Gestion de la désinscription VIP
+    this.bot.action('unsubscribe_confirm', async (ctx) => {
+      const user = ctx.from;
+      if (!user) return;
+
+      await ctx.answerCbQuery();
+
+      try {
+        // Révoquer l'accès VIP
+        const revokedUser = await this.vipManager.revokeVipAccess(user.id);
+
+        if (!revokedUser) {
+          await ctx.reply('❌ Utilisateur non trouvé.');
+          return;
+        }
+
+        // Marquer tous les abonnements comme annulés
+        await Subscription.updateMany(
+          { telegramId: user.id, status: 'active' },
+          { status: 'cancelled', autoRenew: false }
+        );
+
+        logger.info(`User ${user.id} unsubscribed from VIP`);
+
+        await ctx.reply(
+          '✅ Vous avez été désinscrit du VIP avec succès.\n\n' +
+          '• Votre accès VIP a été révoqué\n' +
+          '• Vous avez été retiré du groupe VIP\n\n' +
+          'Vous pouvez vous réabonner à tout moment avec /subscribe'
+        );
+      } catch (error) {
+        logger.error({ error }, 'Unsubscribe error');
+        await ctx.reply('❌ Erreur lors de la désinscription. Veuillez contacter le support.');
+      }
+    });
+
+    this.bot.action('unsubscribe_abort', async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply('✅ Désinscription annulée. Votre accès VIP reste actif.');
     });
 
     // Gestion des erreurs

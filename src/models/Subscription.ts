@@ -11,7 +11,7 @@ export interface ISubscription extends Document {
   startDate: Date;
   endDate: Date;
   autoRenew: boolean;
-  paymentProvider: 'paypal' | 'revolut';
+  paymentProvider: 'paypal' | 'revolut' | 'test';
   externalSubscriptionId?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -56,7 +56,7 @@ const SubscriptionSchema: Schema = new Schema(
     },
     paymentProvider: {
       type: String,
-      enum: ['paypal', 'revolut'],
+      enum: ['paypal', 'revolut', 'test'],
       required: true,
     },
     externalSubscriptionId: {

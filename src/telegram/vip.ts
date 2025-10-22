@@ -127,17 +127,47 @@ export class VipManager {
 
   async removeFromVipChat(telegramId: number): Promise<void> {
     try {
+      // Vérifier d'abord si l'utilisateur est membre du chat
+      try {
+        const member = await this.bot.telegram.getChatMember(
+          config.telegram.vipChatId,
+          telegramId
+        );
+
+        // Si l'utilisateur n'est pas membre ou déjà banni, pas besoin de le retirer
+        if (member.status === 'left' || member.status === 'kicked') {
+          logger.info(`User ${telegramId} is not a member of VIP chat, skipping removal`);
+          return;
+        }
+      } catch (error: any) {
+        // Si on ne peut pas obtenir les infos du membre, il n'est probablement pas dans le groupe
+        if (error.response?.error_code === 400) {
+          logger.info(`User ${telegramId} not found in VIP chat, skipping removal`);
+          return;
+        }
+        throw error;
+      }
+
+      // Bannir l'utilisateur
       await this.bot.telegram.banChatMember(
         config.telegram.vipChatId,
         telegramId
       );
+
       // Débanner immédiatement pour permettre une réinscription future
       await this.bot.telegram.unbanChatMember(
         config.telegram.vipChatId,
         telegramId
       );
+
+      logger.info(`User ${telegramId} removed from VIP chat successfully`);
     } catch (error) {
       logger.error({ error }, `Failed to remove user ${telegramId} from VIP chat`);
+      // Ne pas propager l'erreur si c'est juste un problème de participant non trouvé
+      if ((error as any).response?.description?.includes('PARTICIPANT_ID_INVALID')) {
+        logger.info(`User ${telegramId} was not a participant, skipping`);
+        return;
+      }
       throw error;
     }
   }

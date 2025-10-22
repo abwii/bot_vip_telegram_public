@@ -48,11 +48,11 @@ async function testSubscription() {
       isVip: false,
     });
     await user.save();
-    logger.info('✅ Utilisateur créé:', {
+    logger.info({
       telegramId: user.telegramId,
       username: user.username,
       isVip: user.isVip,
-    });
+    }, '✅ Utilisateur créé');
 
     logger.info('\n=== TEST 2: Création d\'un paiement ===');
 
@@ -72,12 +72,12 @@ async function testSubscription() {
       },
     });
     await payment.save();
-    logger.info('✅ Paiement créé:', {
+    logger.info({
       id: payment._id,
       amount: payment.amount,
       currency: payment.currency,
       status: payment.status,
-    });
+    }, '✅ Paiement créé');
 
     logger.info('\n=== TEST 3: Création d\'un abonnement VIP ===');
 
@@ -107,40 +107,40 @@ async function testSubscription() {
     });
     await subscription.save();
 
-    logger.info('✅ Abonnement créé:', {
+    logger.info({
       id: subscription._id,
       plan: subscription.plan,
       status: subscription.status,
       startDate: subscription.startDate.toLocaleDateString('fr-FR'),
       endDate: subscription.endDate.toLocaleDateString('fr-FR'),
       autoRenew: subscription.autoRenew,
-    });
+    }, '✅ Abonnement créé');
 
     logger.info('\n=== TEST 4: Vérification des données en base ===');
 
     // Vérifier l'utilisateur
     const savedUser = await User.findOne({ telegramId: testTelegramId });
-    logger.info('Utilisateur en base:', {
+    logger.info({
       telegramId: savedUser?.telegramId,
       isVip: savedUser?.isVip,
       vipUntil: savedUser?.vipUntil?.toLocaleDateString('fr-FR'),
-    });
+    }, 'Utilisateur en base');
 
     // Vérifier le paiement
     const savedPayment = await Payment.findOne({ telegramId: testTelegramId });
-    logger.info('Paiement en base:', {
+    logger.info({
       id: savedPayment?._id,
       amount: savedPayment?.amount,
       status: savedPayment?.status,
-    });
+    }, 'Paiement en base');
 
     // Vérifier l'abonnement
     const savedSubscription = await Subscription.findOne({ telegramId: testTelegramId });
-    logger.info('Abonnement en base:', {
+    logger.info({
       id: savedSubscription?._id,
       status: savedSubscription?.status,
       plan: savedSubscription?.plan,
-    });
+    }, 'Abonnement en base');
 
     logger.info('\n=== TEST 5: Simulation d\'un abonnement expiré ===');
 
@@ -169,11 +169,11 @@ async function testSubscription() {
     });
     await expiredSubscription.save();
 
-    logger.info('✅ Utilisateur avec abonnement expiré créé:', {
+    logger.info({
       telegramId: expiredUser.telegramId,
       isVip: expiredUser.isVip,
-      vipUntil: expiredUser.vipUntil.toLocaleDateString('fr-FR'),
-    });
+      vipUntil: expiredUser.vipUntil?.toLocaleDateString('fr-FR'),
+    }, '✅ Utilisateur avec abonnement expiré créé');
 
     logger.info('\n=== TEST 6: Recherche des utilisateurs expirés ===');
 
@@ -208,9 +208,9 @@ async function testSubscription() {
 
     // Vérifier la mise à jour
     const updatedSubscription = await Subscription.findOne({ telegramId: expiredTelegramId });
-    logger.info('Abonnement après mise à jour:', {
+    logger.info({
       status: updatedSubscription?.status,
-    });
+    }, 'Abonnement après mise à jour');
 
     logger.info('\n=== TEST 8: Statistiques ===');
 
@@ -240,11 +240,11 @@ async function testSubscription() {
       },
     ]);
 
-    logger.info('Statistiques:', {
+    logger.info({
       activeVipCount,
       activeSubscriptions,
       totalRevenue: totalRevenue[0]?.total || 0,
-    });
+    }, 'Statistiques');
 
     logger.info('\n=== 🎉 TOUS LES TESTS RÉUSSIS ! ===');
     logger.info('\n💡 Utilisez ces commandes pour vérifier dans MongoDB:');

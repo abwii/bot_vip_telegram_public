@@ -3,10 +3,10 @@ import { Admin } from '../models/Admin';
 import { User } from '../models/User';
 import { Subscription } from '../models/Subscription';
 import { Payment } from '../models/Payment';
-import { requireAuth, requireAuthWeb, requireSuperAdmin } from '../middleware/auth';
+import { requireAuth, requireAuthWeb } from '../middleware/auth';
 import { logger } from '../index';
 
-const router = Router();
+const router: Router = Router();
 
 // ==================== Pages HTML ====================
 
@@ -350,6 +350,96 @@ router.get('/dashboard', requireAuthWeb, async (req: Request, res: Response) => 
           background: #667eea;
           color: white;
         }
+        .action-btn-danger {
+          border-color: #dc3545;
+          color: #dc3545;
+        }
+        .action-btn-danger:hover {
+          background: #dc3545;
+          color: white;
+        }
+        .modal {
+          display: none;
+          position: fixed;
+          z-index: 1000;
+          left: 0;
+          top: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0,0,0,0.5);
+          align-items: center;
+          justify-content: center;
+        }
+        .modal.show {
+          display: flex;
+        }
+        .modal-content {
+          background: white;
+          border-radius: 10px;
+          padding: 30px;
+          max-width: 500px;
+          width: 90%;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+          margin-bottom: 20px;
+        }
+        .modal-header h3 {
+          margin: 0;
+          color: #333;
+        }
+        .modal-body {
+          margin-bottom: 20px;
+        }
+        .modal-body .form-group {
+          margin-bottom: 15px;
+        }
+        .modal-body label {
+          display: block;
+          margin-bottom: 5px;
+          font-weight: 600;
+          color: #333;
+        }
+        .modal-body input, .modal-body select {
+          width: 100%;
+          padding: 10px;
+          border: 1px solid #ddd;
+          border-radius: 5px;
+          font-size: 14px;
+        }
+        .modal-footer {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+        }
+        .modal-footer button {
+          padding: 10px 20px;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        .btn-primary {
+          background: #667eea;
+          color: white;
+        }
+        .btn-primary:hover {
+          background: #5568d3;
+        }
+        .btn-secondary {
+          background: #6c757d;
+          color: white;
+        }
+        .btn-secondary:hover {
+          background: #5a6268;
+        }
+        .btn-danger {
+          background: #dc3545;
+          color: white;
+        }
+        .btn-danger:hover {
+          background: #c82333;
+        }
       </style>
     </head>
     <body>
@@ -422,7 +512,41 @@ router.get('/dashboard', requireAuthWeb, async (req: Request, res: Response) => 
         </div>
       </div>
 
+      <!-- Modal pour éditer un abonnement -->
+      <div id="editModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Modifier l'abonnement</h3>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="editStartDate">Date de début</label>
+              <input type="date" id="editStartDate" required>
+            </div>
+            <div class="form-group">
+              <label for="editEndDate">Date de fin</label>
+              <input type="date" id="editEndDate" required>
+            </div>
+            <div class="form-group">
+              <label for="editStatus">Statut</label>
+              <select id="editStatus">
+                <option value="active">Actif</option>
+                <option value="expired">Expiré</option>
+                <option value="cancelled">Annulé</option>
+                <option value="pending">En attente</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeEditModal()">Annuler</button>
+            <button class="btn-primary" onclick="saveSubscription()">Enregistrer</button>
+          </div>
+        </div>
+      </div>
+
       <script>
+        let currentSubscriptionId = null;
+
         // Charger les statistiques
         async function loadStats() {
           try {
@@ -454,16 +578,22 @@ router.get('/dashboard', requireAuthWeb, async (req: Request, res: Response) => 
 
             let html = '<table><thead><tr><th>Telegram ID</th><th>Nom</th><th>Username</th><th>Statut VIP</th><th>VIP jusqu\\'à</th><th>Date création</th><th>Actions</th></tr></thead><tbody>';
 
+            const formatDate = (date) => {
+              if (!date) return '-';
+              const d = new Date(date);
+              const day = String(d.getDate()).padStart(2, '0');
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const year = d.getFullYear();
+              return \`\${day}/\${month}/\${year}\`;
+            };
+
             users.forEach(user => {
               const vipBadge = user.isVip
                 ? '<span class="badge badge-success">VIP</span>'
                 : '<span class="badge badge-danger">Non-VIP</span>';
 
-              const vipUntil = user.vipUntil
-                ? new Date(user.vipUntil).toLocaleDateString('fr-FR')
-                : '-';
-
-              const createdAt = new Date(user.createdAt).toLocaleDateString('fr-FR');
+              const vipUntil = formatDate(user.vipUntil);
+              const createdAt = formatDate(user.createdAt);
 
               html += \`
                 <tr>
@@ -499,7 +629,7 @@ router.get('/dashboard', requireAuthWeb, async (req: Request, res: Response) => 
               return;
             }
 
-            let html = '<table><thead><tr><th>Telegram ID</th><th>Plan</th><th>Statut</th><th>Début</th><th>Fin</th><th>Provider</th><th>Auto-renouvellement</th></tr></thead><tbody>';
+            let html = '<table><thead><tr><th>Telegram ID</th><th>Plan</th><th>Statut</th><th>Début</th><th>Fin</th><th>Provider</th><th>Auto-renouvellement</th><th>Actions</th></tr></thead><tbody>';
 
             subscriptions.forEach(sub => {
               const statusBadges = {
@@ -515,15 +645,29 @@ router.get('/dashboard', requireAuthWeb, async (req: Request, res: Response) => 
                 yearly: 'Annuel'
               };
 
+              const formatDate = (date) => {
+                const d = new Date(date);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                return \`\${day}/\${month}/\${year}\`;
+              };
+
+              const subId = sub._id.toString ? sub._id.toString() : sub._id;
+
               html += \`
                 <tr>
                   <td>\${sub.telegramId}</td>
                   <td>\${planLabels[sub.plan]}</td>
                   <td>\${statusBadges[sub.status]}</td>
-                  <td>\${new Date(sub.startDate).toLocaleDateString('fr-FR')}</td>
-                  <td>\${new Date(sub.endDate).toLocaleDateString('fr-FR')}</td>
+                  <td>\${formatDate(sub.startDate)}</td>
+                  <td>\${formatDate(sub.endDate)}</td>
                   <td>\${sub.paymentProvider}</td>
                   <td>\${sub.autoRenew ? '✅' : '❌'}</td>
+                  <td>
+                    <button class="action-btn" onclick="editSubscription('\${subId}')">Modifier</button>
+                    <button class="action-btn action-btn-danger" onclick="deleteSubscription('\${subId}')">Supprimer</button>
+                  </td>
                 </tr>
               \`;
             });
@@ -547,7 +691,7 @@ router.get('/dashboard', requireAuthWeb, async (req: Request, res: Response) => 
               return;
             }
 
-            let html = '<table><thead><tr><th>Telegram ID</th><th>Montant</th><th>Devise</th><th>Provider</th><th>Statut</th><th>Date</th></tr></thead><tbody>';
+            let html = '<table><thead><tr><th>Telegram ID</th><th>Montant</th><th>Devise</th><th>Provider</th><th>Statut</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
 
             payments.forEach(payment => {
               const statusBadges = {
@@ -557,6 +701,16 @@ router.get('/dashboard', requireAuthWeb, async (req: Request, res: Response) => 
                 refunded: '<span class="badge badge-warning">Remboursé</span>'
               };
 
+              const formatDate = (date) => {
+                const d = new Date(date);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                return \`\${day}/\${month}/\${year}\`;
+              };
+
+              const paymentId = payment._id.toString ? payment._id.toString() : payment._id;
+
               html += \`
                 <tr>
                   <td>\${payment.telegramId}</td>
@@ -564,7 +718,10 @@ router.get('/dashboard', requireAuthWeb, async (req: Request, res: Response) => 
                   <td>\${payment.currency}</td>
                   <td>\${payment.provider}</td>
                   <td>\${statusBadges[payment.status]}</td>
-                  <td>\${new Date(payment.createdAt).toLocaleDateString('fr-FR')}</td>
+                  <td>\${formatDate(payment.createdAt)}</td>
+                  <td>
+                    <button class="action-btn action-btn-danger" onclick="deletePayment('\${paymentId}')">Supprimer</button>
+                  </td>
                 </tr>
               \`;
             });
@@ -595,6 +752,145 @@ router.get('/dashboard', requireAuthWeb, async (req: Request, res: Response) => 
             window.location.href = '/admin/login';
           } catch (error) {
             console.error('Erreur lors de la déconnexion:', error);
+          }
+        }
+
+        // Éditer un abonnement
+        async function editSubscription(subscriptionId) {
+          console.log('Editing subscription:', subscriptionId);
+          currentSubscriptionId = subscriptionId;
+
+          try {
+            const response = await fetch(\`/admin/api/subscriptions/\${subscriptionId}\`);
+
+            if (!response.ok) {
+              const error = await response.json();
+              console.error('Failed to fetch subscription:', error);
+              alert('Erreur lors du chargement de l\\'abonnement: ' + (error.error || 'Erreur inconnue'));
+              return;
+            }
+
+            const subscription = await response.json();
+            console.log('Subscription loaded:', subscription);
+
+            // Convertir les dates au format YYYY-MM-DD pour les inputs
+            const startDate = new Date(subscription.startDate);
+            const endDate = new Date(subscription.endDate);
+
+            document.getElementById('editStartDate').value = startDate.toISOString().split('T')[0];
+            document.getElementById('editEndDate').value = endDate.toISOString().split('T')[0];
+            document.getElementById('editStatus').value = subscription.status;
+
+            document.getElementById('editModal').classList.add('show');
+          } catch (error) {
+            console.error('Erreur lors du chargement de l\\'abonnement:', error);
+            alert('Erreur lors du chargement de l\\'abonnement');
+          }
+        }
+
+        // Fermer la modale d'édition
+        function closeEditModal() {
+          document.getElementById('editModal').classList.remove('show');
+          currentSubscriptionId = null;
+        }
+
+        // Sauvegarder les modifications
+        async function saveSubscription() {
+          if (!currentSubscriptionId) return;
+
+          const startDate = document.getElementById('editStartDate').value;
+          const endDate = document.getElementById('editEndDate').value;
+          const status = document.getElementById('editStatus').value;
+
+          if (!startDate || !endDate) {
+            alert('Veuillez remplir toutes les dates');
+            return;
+          }
+
+          try {
+            const response = await fetch(\`/admin/api/subscriptions/\${currentSubscriptionId}\`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ startDate, endDate, status })
+            });
+
+            if (response.ok) {
+              alert('Abonnement modifié avec succès');
+              closeEditModal();
+              loadSubscriptions();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la modification'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la sauvegarde:', error);
+            alert('Erreur lors de la sauvegarde');
+          }
+        }
+
+        // Supprimer un abonnement
+        async function deleteSubscription(subscriptionId) {
+          console.log('Deleting subscription:', subscriptionId);
+
+          if (!confirm('Êtes-vous sûr de vouloir supprimer cet abonnement ?')) {
+            return;
+          }
+
+          try {
+            const response = await fetch(\`/admin/api/subscriptions/\${subscriptionId}\`, {
+              method: 'DELETE'
+            });
+
+            console.log('Delete response status:', response.status);
+
+            if (response.ok) {
+              alert('Abonnement supprimé avec succès');
+              loadSubscriptions();
+              loadStats();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la suppression'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la suppression:', error);
+            alert('Erreur lors de la suppression');
+          }
+        }
+
+        // Supprimer un paiement
+        async function deletePayment(paymentId) {
+          console.log('Deleting payment:', paymentId);
+
+          if (!confirm('Êtes-vous sûr de vouloir supprimer ce paiement ?')) {
+            return;
+          }
+
+          try {
+            const response = await fetch(\`/admin/api/payments/\${paymentId}\`, {
+              method: 'DELETE'
+            });
+
+            console.log('Delete response status:', response.status);
+
+            if (response.ok) {
+              alert('Paiement supprimé avec succès');
+              loadPayments();
+              loadStats();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la suppression'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la suppression:', error);
+            alert('Erreur lors de la suppression');
+          }
+        }
+
+        // Fermer les modales en cliquant en dehors
+        window.onclick = function(event) {
+          const modal = document.getElementById('editModal');
+          if (event.target === modal) {
+            closeEditModal();
           }
         }
 
@@ -641,7 +937,7 @@ router.post('/api/login', async (req: Request, res: Response) => {
     await admin.save();
 
     // Créer la session
-    req.session.adminId = admin._id.toString();
+    req.session.adminId = (admin._id as any).toString();
     req.session.username = admin.username;
     req.session.role = admin.role;
 
@@ -676,7 +972,7 @@ router.post('/api/logout', requireAuth, (req: Request, res: Response) => {
 });
 
 // Stats
-router.get('/api/stats', requireAuth, async (req: Request, res: Response) => {
+router.get('/api/stats', requireAuth, async (_req: Request, res: Response) => {
   try {
     const [totalUsers, vipUsers, activeSubscriptions, completedPayments] = await Promise.all([
       User.countDocuments(),
@@ -802,6 +1098,111 @@ router.get('/api/payments', requireAuth, async (req: Request, res: Response) => 
     res.json(payments);
   } catch (error) {
     logger.error({ error }, 'Payments list error');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Détails d'un abonnement
+router.get('/api/subscriptions/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const subscription = await Subscription.findById(req.params.id).lean();
+    if (!subscription) {
+      res.status(404).json({ error: 'Abonnement non trouvé' });
+      return;
+    }
+
+    res.json(subscription);
+  } catch (error) {
+    logger.error({ error }, 'Subscription details error');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Modifier un abonnement
+router.put('/api/subscriptions/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, status } = req.body;
+
+    if (!startDate || !endDate || !status) {
+      res.status(400).json({ error: 'Données manquantes' });
+      return;
+    }
+
+    const subscription = await Subscription.findById(req.params.id);
+    if (!subscription) {
+      res.status(404).json({ error: 'Abonnement non trouvé' });
+      return;
+    }
+
+    subscription.startDate = new Date(startDate);
+    subscription.endDate = new Date(endDate);
+    subscription.status = status;
+
+    await subscription.save();
+
+    // Mettre à jour le statut VIP de l'utilisateur si nécessaire
+    if (status === 'active') {
+      await User.findOneAndUpdate(
+        { telegramId: subscription.telegramId },
+        {
+          isVip: true,
+          vipUntil: new Date(endDate),
+        }
+      );
+    } else if (status === 'expired' || status === 'cancelled') {
+      await User.findOneAndUpdate(
+        { telegramId: subscription.telegramId },
+        {
+          isVip: false,
+        }
+      );
+    }
+
+    logger.info(`Subscription ${req.params.id} updated by admin ${req.session.username}`);
+
+    res.json({ success: true, subscription });
+  } catch (error) {
+    logger.error({ error }, 'Subscription update error');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Supprimer un abonnement
+router.delete('/api/subscriptions/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const subscription = await Subscription.findById(req.params.id);
+    if (!subscription) {
+      res.status(404).json({ error: 'Abonnement non trouvé' });
+      return;
+    }
+
+    await Subscription.findByIdAndDelete(req.params.id);
+
+    logger.info(`Subscription ${req.params.id} deleted by admin ${req.session.username}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error }, 'Subscription deletion error');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Supprimer un paiement
+router.delete('/api/payments/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const payment = await Payment.findById(req.params.id);
+    if (!payment) {
+      res.status(404).json({ error: 'Paiement non trouvé' });
+      return;
+    }
+
+    await Payment.findByIdAndDelete(req.params.id);
+
+    logger.info(`Payment ${req.params.id} deleted by admin ${req.session.username}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ error }, 'Payment deletion error');
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
