@@ -44,6 +44,9 @@ app.use(
   })
 );
 
+// Servir les fichiers statiques
+app.use(express.static('public'));
+
 // Telegram bot
 let bot: TelegramBot;
 

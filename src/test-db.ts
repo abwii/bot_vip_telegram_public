@@ -47,6 +47,20 @@ async function testMongoDBConnection(): Promise<void> {
     console.error('❌ MongoDB connection failed:');
     console.error(error);
     process.exit(1);
+  } finally {
+    // Nettoyer les données de test si elles existent
+    try {
+      const testCollections = mongoose.connection.db
+        ? await mongoose.connection.db.listCollections({ name: /test/i }).toArray()
+        : [];
+
+      for (const collection of testCollections) {
+        await mongoose.connection.db?.dropCollection(collection.name);
+        console.log(`🗑️  Cleaned test collection: ${collection.name}`);
+      }
+    } catch (cleanupError) {
+      console.error('⚠️  Error during cleanup:', cleanupError);
+    }
   }
 }
 

@@ -253,6 +253,15 @@ async function testSubscription() {
     logger.info('db.subscriptions.find().pretty()');
     logger.info('db.payments.find().pretty()');
 
+    logger.info('\n=== NETTOYAGE DES DONNÉES DE TEST ===');
+
+    // Supprimer les données de test créées
+    await User.deleteMany({ telegramId: { $in: [testTelegramId, expiredTelegramId] } });
+    await Subscription.deleteMany({ telegramId: { $in: [testTelegramId, expiredTelegramId] } });
+    await Payment.deleteMany({ telegramId: { $in: [testTelegramId, expiredTelegramId] } });
+
+    logger.info('✅ Données de test nettoyées avec succès');
+
   } catch (error) {
     logger.error({ error }, 'Erreur lors des tests');
   } finally {

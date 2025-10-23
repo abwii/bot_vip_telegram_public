@@ -40,13 +40,14 @@ export class TelegramBot {
       await ctx.reply(
         `👋 Bienvenue ${user.first_name} !\n\n` +
         `Je suis votre assistant pour gérer l'accès VIP.\n\n` +
-        `Commandes disponibles :\n` +
-        `/subscribe - S'abonner au service VIP\n` +
-        `/status - Voir votre statut VIP\n` +
-        `/plans - Voir les plans disponibles\n` +
-        `/cancel - Annuler votre abonnement\n` +
-        `/unsubscribe - Se désinscrire du VIP\n` +
-        `/help - Aide`
+        `Utilisez le menu ci-dessous ou les commandes suivantes :`,
+        Markup.keyboard([
+          ['💎 S\'abonner', '📊 Mon statut'],
+          ['📋 Voir les plans', '❌ Annuler abonnement'],
+          ['📖 Aide'],
+        ])
+        .resize()
+        .persistent()
       );
     });
 
@@ -194,63 +195,119 @@ export class TelegramBot {
       );
     });
 
-    // Commande de test (bypass paiement) - à retirer en production
-    this.bot.command('testvip', async (ctx) => {
-      const user = ctx.from;
-      if (!user) return;
-
-      await ctx.reply('🧪 Mode test activé - Attribution de l\'accès VIP...');
-
-      try {
-        // Créer ou mettre à jour l'utilisateur
-        await User.findOneAndUpdate(
-          { telegramId: user.id },
-          {
-            telegramId: user.id,
-            username: user.username,
-            firstName: user.first_name,
-            lastName: user.last_name,
-          },
-          { upsert: true, new: true }
-        );
-
-        // Accorder l'accès VIP pour 30 jours (plan mensuel)
-        await this.vipManager.grantVipAccess(user.id, 30);
-
-        // Créer un abonnement de test en base de données
-        const startDate = new Date();
-        const endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + 30);
-
-        const subscription = new Subscription({
-          userId: (await User.findOne({ telegramId: user.id }))?._id,
-          telegramId: user.id,
-          plan: 'monthly',
-          status: 'active',
-          startDate,
-          endDate,
-          paymentProvider: 'test',
-          externalSubscriptionId: `test_${user.id}_${Date.now()}`,
-        });
-
-        await subscription.save();
-
-        logger.info(`Test VIP access granted to user ${user.id}`);
-
-        await ctx.reply(
-          '✅ Accès VIP de test accordé avec succès !\n\n' +
-          `📅 Expire le : ${endDate.toLocaleDateString('fr-FR')}\n` +
-          `📦 Plan : Mensuel (test)\n\n` +
-          'Utilisez /status pour vérifier votre statut.'
-        );
-      } catch (error) {
-        logger.error({ error }, 'Test VIP grant error');
-        await ctx.reply('❌ Erreur lors de l\'attribution de l\'accès VIP de test.');
-      }
-    });
   }
 
   private setupHandlers(): void {
+    // Gestion des messages texte pour les boutons du clavier
+    this.bot.hears('💎 S\'abonner', async (ctx) => {
+      await ctx.reply(
+        '💎 Choisissez votre plan VIP :',
+        Markup.inlineKeyboard([
+          [Markup.button.callback('Mensuel - 0.99€', 'plan_monthly')],
+          [Markup.button.callback('Trimestriel - 24.99€', 'plan_quarterly')],
+          [Markup.button.callback('Annuel - 89.99€', 'plan_yearly')],
+        ])
+      );
+    });
+
+    this.bot.hears('📊 Mon statut', async (ctx) => {
+      const user = ctx.from;
+      if (!user) return;
+
+      const dbUser = await User.findOne({ telegramId: user.id });
+
+      if (!dbUser || !dbUser.isVip) {
+        await ctx.reply(
+          '❌ Vous n\'avez pas d\'accès VIP actif.\n\n' +
+          'Utilisez /subscribe pour vous abonner.'
+        );
+        return;
+      }
+
+      const isValid = await this.vipManager.checkVipStatus(user.id);
+
+      if (!isValid) {
+        await ctx.reply(
+          '❌ Votre accès VIP a expiré.\n\n' +
+          'Utilisez /subscribe pour renouveler.'
+        );
+        return;
+      }
+
+      const subscription = await Subscription.findOne({
+        telegramId: user.id,
+        status: 'active',
+      }).sort({ createdAt: -1 });
+
+      await ctx.reply(
+        `✅ Statut VIP : Actif\n\n` +
+        `📅 Expire le : ${dbUser.vipUntil?.toLocaleDateString('fr-FR')}\n` +
+        `📦 Plan : ${subscription?.plan || 'N/A'}\n` +
+        `🔄 Renouvellement auto : ${subscription?.autoRenew ? 'Oui' : 'Non'}`
+      );
+    });
+
+    this.bot.hears('📋 Voir les plans', async (ctx) => {
+      await ctx.reply(
+        '💎 Plans VIP disponibles :\n\n' +
+        '📅 Mensuel - 0.99€/mois\n' +
+        '• Accès complet au groupe VIP\n' +
+        '• Support prioritaire\n' +
+        '• Contenu exclusif\n\n' +
+        '📅 Trimestriel - 24.99€ (3 mois)\n' +
+        '• Économisez 5€\n' +
+        '• Tous les avantages mensuels\n\n' +
+        '📅 Annuel - 89.99€ (12 mois)\n' +
+        '• Économisez 30€\n' +
+        '• Tous les avantages mensuels\n\n' +
+        'Utilisez /subscribe pour commencer !'
+      );
+    });
+
+    this.bot.hears('❌ Annuler abonnement', async (ctx) => {
+      const user = ctx.from;
+      if (!user) return;
+
+      const subscription = await Subscription.findOne({
+        telegramId: user.id,
+        status: 'active',
+      }).sort({ createdAt: -1 });
+
+      if (!subscription) {
+        await ctx.reply('❌ Aucun abonnement actif trouvé.');
+        return;
+      }
+
+      await ctx.reply(
+        '⚠️ Êtes-vous sûr de vouloir annuler votre abonnement ?\n\n' +
+        'Vous conserverez l\'accès VIP jusqu\'à la fin de votre période payée.',
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback('✅ Confirmer', `cancel_confirm_${subscription._id}`),
+            Markup.button.callback('❌ Annuler', 'cancel_abort'),
+          ],
+        ])
+      );
+    });
+
+    this.bot.hears('📖 Aide', async (ctx) => {
+      await ctx.reply(
+        '📖 Aide - Bot VIP\n\n' +
+        'Commandes disponibles :\n\n' +
+        '/start - Commencer\n' +
+        '/subscribe - S\'abonner au VIP\n' +
+        '/status - Voir votre statut\n' +
+        '/plans - Plans disponibles\n' +
+        '/cancel - Annuler l\'abonnement\n' +
+        '/unsubscribe - Se désinscrire du VIP\n' +
+        '/help - Cette aide\n\n' +
+        '💳 Moyens de paiement :\n' +
+        '• PayPal\n' +
+        '• Revolut\n\n' +
+        '❓ Besoin d\'aide ? Contactez @support'
+      );
+    });
+
     // Gestion des callbacks pour les plans
     this.bot.action(/plan_(monthly|quarterly|yearly)/, async (ctx) => {
       const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'yearly';
@@ -261,6 +318,7 @@ export class TelegramBot {
         Markup.inlineKeyboard([
           [Markup.button.callback('💳 PayPal', `payment_paypal_${plan}`)],
           [Markup.button.callback('💰 Revolut', `payment_revolut_${plan}`)],
+          [Markup.button.callback('❌ Annuler', 'payment_cancel')],
         ])
       );
     });
@@ -301,6 +359,7 @@ export class TelegramBot {
             `Une fois le paiement effectué, votre accès VIP sera activé automatiquement.`,
             Markup.inlineKeyboard([
               [Markup.button.url('💳 Payer avec PayPal', approveLink.href)],
+              [Markup.button.callback('❌ Annuler la commande', 'payment_cancel')],
             ])
           );
         }
@@ -343,6 +402,7 @@ export class TelegramBot {
           `Une fois le paiement effectué, votre accès VIP sera activé automatiquement.`,
           Markup.inlineKeyboard([
             [Markup.button.url('💰 Payer avec Revolut', order.checkout_url)],
+            [Markup.button.callback('❌ Annuler la commande', 'payment_cancel')],
           ])
         );
       } catch (error) {
@@ -437,6 +497,15 @@ export class TelegramBot {
     this.bot.action('unsubscribe_abort', async (ctx) => {
       await ctx.answerCbQuery();
       await ctx.reply('✅ Désinscription annulée. Votre accès VIP reste actif.');
+    });
+
+    // Gestion de l'annulation de commande
+    this.bot.action('payment_cancel', async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '✅ Commande annulée.\n\n' +
+        'Vous pouvez créer une nouvelle commande à tout moment avec /subscribe'
+      );
     });
 
     // Gestion des erreurs
