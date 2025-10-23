@@ -55,7 +55,7 @@ export class TelegramBot {
       await ctx.reply(
         '💎 Choisissez votre plan VIP :',
         Markup.inlineKeyboard([
-          [Markup.button.callback('Mensuel - 9.99€', 'plan_monthly')],
+          [Markup.button.callback('Mensuel - 0.99€', 'plan_monthly')],
           [Markup.button.callback('Trimestriel - 24.99€', 'plan_quarterly')],
           [Markup.button.callback('Annuel - 89.99€', 'plan_yearly')],
         ])
@@ -104,7 +104,7 @@ export class TelegramBot {
     this.bot.command('plans', async (ctx) => {
       await ctx.reply(
         '💎 Plans VIP disponibles :\n\n' +
-        '📅 Mensuel - 9.99€/mois\n' +
+        '📅 Mensuel - 0.99€/mois\n' +
         '• Accès complet au groupe VIP\n' +
         '• Support prioritaire\n' +
         '• Contenu exclusif\n\n' +
@@ -276,7 +276,7 @@ export class TelegramBot {
 
       try {
         const amounts = {
-          monthly: 9.99,
+          monthly: 0.99,
           quarterly: 24.99,
           yearly: 89.99,
         };
