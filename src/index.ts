@@ -59,6 +59,11 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
+// Root route - serve index.html
+app.get('/', (_req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
 // Health check
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
