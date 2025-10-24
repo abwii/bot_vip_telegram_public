@@ -110,6 +110,12 @@ router.get('/login', (req: Request, res: Response) => {
         .error.show {
           display: block;
         }
+        .hint {
+          text-align: center;
+          margin-top: 15px;
+          font-size: 12px;
+          color: #666;
+        }
       </style>
     </head>
     <body>
@@ -131,6 +137,7 @@ router.get('/login', (req: Request, res: Response) => {
           </div>
 
           <button type="submit">Se connecter</button>
+          <div class="hint">Utilisez la commande 'pnpm run create-admin' pour créer un compte admin</div>
         </form>
       </div>
 
