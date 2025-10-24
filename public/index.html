@@ -240,7 +240,7 @@
       <div class="plan-card">
         <div class="plan-name">Mensuel</div>
         <div class="plan-price">
-          <span class="currency">€</span>0.99
+          <span class="currency">€</span><span data-price="monthly">0.99</span>
         </div>
         <div class="plan-duration">par mois</div>
 
@@ -260,10 +260,10 @@
         <div class="featured-badge">Populaire</div>
         <div class="plan-name">Trimestriel</div>
         <div class="plan-price">
-          <span class="currency">€</span>24.99
+          <span class="currency">€</span><span data-price="quarterly">24.99</span>
         </div>
         <div class="plan-duration">3 mois</div>
-        <div class="plan-savings">Économisez 5€</div>
+        <div class="plan-savings" data-savings="quarterly">Économisez 5€</div>
 
         <ul class="plan-features">
           <li>Tous les avantages mensuels</li>
@@ -280,10 +280,10 @@
       <div class="plan-card">
         <div class="plan-name">Annuel</div>
         <div class="plan-price">
-          <span class="currency">€</span>89.99
+          <span class="currency">€</span><span data-price="yearly">89.99</span>
         </div>
         <div class="plan-duration">12 mois</div>
-        <div class="plan-savings">Économisez 30€</div>
+        <div class="plan-savings" data-savings="yearly">Économisez 30€</div>
 
         <ul class="plan-features">
           <li>Tous les avantages trimestriels</li>
@@ -326,6 +326,73 @@
         }
       });
     });
+
+    // Charger les prix depuis l'API
+    async function loadPricing() {
+      try {
+        console.log('Chargement des prix depuis l\'API...');
+        const response = await fetch('/api/pricing');
+
+        if (!response.ok) {
+          console.error('Erreur HTTP:', response.status, response.statusText);
+          return;
+        }
+
+        const prices = await response.json();
+        console.log('Prix reçus:', prices);
+
+        if (!Array.isArray(prices) || prices.length === 0) {
+          console.warn('Aucun prix trouvé dans la base de données');
+          return;
+        }
+
+        // Créer un map des prix par plan
+        const priceMap = {};
+        prices.forEach(price => {
+          priceMap[price.plan] = price.price;
+        });
+        console.log('Prix mappés:', priceMap);
+
+        // Mettre à jour les prix affichés
+        let updatedCount = 0;
+        document.querySelectorAll('[data-price]').forEach(element => {
+          const plan = element.getAttribute('data-price');
+          if (priceMap[plan] !== undefined) {
+            element.textContent = priceMap[plan].toFixed(2);
+            updatedCount++;
+            console.log(`Prix mis à jour pour ${plan}: ${priceMap[plan].toFixed(2)}€`);
+          }
+        });
+        console.log(`Total de ${updatedCount} prix mis à jour`);
+
+        // Calculer et mettre à jour les économies
+        if (priceMap.monthly && priceMap.quarterly) {
+          const quarterlySavings = (priceMap.monthly * 3 - priceMap.quarterly).toFixed(2);
+          const quarterlyElement = document.querySelector('[data-savings="quarterly"]');
+          if (quarterlyElement) {
+            quarterlyElement.textContent = `Économisez ${quarterlySavings}€`;
+            console.log('Économies trimestrielles mises à jour:', quarterlySavings + '€');
+          }
+        }
+
+        if (priceMap.monthly && priceMap.yearly) {
+          const yearlySavings = (priceMap.monthly * 12 - priceMap.yearly).toFixed(2);
+          const yearlyElement = document.querySelector('[data-savings="yearly"]');
+          if (yearlyElement) {
+            yearlyElement.textContent = `Économisez ${yearlySavings}€`;
+            console.log('Économies annuelles mises à jour:', yearlySavings + '€');
+          }
+        }
+
+        console.log('Chargement des prix terminé avec succès');
+      } catch (error) {
+        console.error('Erreur lors du chargement des prix:', error);
+        // Les prix par défaut dans le HTML seront affichés en cas d'erreur
+      }
+    }
+
+    // Charger les prix au chargement de la page
+    document.addEventListener('DOMContentLoaded', loadPricing);
   </script>
 </body>
 </html>

@@ -3,6 +3,7 @@ import { Admin } from '../models/Admin';
 import { User } from '../models/User';
 import { Subscription } from '../models/Subscription';
 import { Payment } from '../models/Payment';
+import { PricingConfig } from '../models/PricingConfig';
 import { requireAuth, requireAuthWeb } from '../middleware/auth';
 import { logger } from '../index';
 
@@ -527,6 +528,17 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             <div class="loading">Chargement...</div>
           </div>
         </div>
+
+        <!-- Gestion des prix -->
+        <div class="section">
+          <h2>💲 Gestion des Prix</h2>
+          <div style="margin-bottom: 1rem;">
+            <button class="btn-primary" onclick="initializePricing()">Initialiser les prix par défaut</button>
+          </div>
+          <div id="pricingTable">
+            <div class="loading">Chargement...</div>
+          </div>
+        </div>
       </div>
 
       <!-- Modal pour éditer un abonnement -->
@@ -583,6 +595,41 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           <div class="modal-footer">
             <button class="btn-secondary" onclick="closeEditUserModal()">Annuler</button>
             <button class="btn-primary" onclick="saveUser()">Enregistrer</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal pour éditer les prix -->
+      <div id="editPricingModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Modifier le prix</h3>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="editPricePlan">Plan</label>
+              <input type="text" id="editPricePlan" disabled>
+            </div>
+            <div class="form-group">
+              <label for="editPriceProvider">Provider</label>
+              <input type="text" id="editPriceProvider" disabled>
+            </div>
+            <div class="form-group">
+              <label for="editPriceAmount">Prix</label>
+              <input type="number" id="editPriceAmount" step="0.01" min="0" required>
+            </div>
+            <div class="form-group">
+              <label for="editPriceCurrency">Devise</label>
+              <input type="text" id="editPriceCurrency" disabled>
+            </div>
+            <div class="form-group">
+              <label for="editPriceDescription">Description</label>
+              <input type="text" id="editPriceDescription">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeEditPricingModal()">Annuler</button>
+            <button class="btn-primary" onclick="savePricing()">Enregistrer</button>
           </div>
         </div>
       </div>
@@ -1028,12 +1075,144 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
         window.onclick = function(event) {
           const editModal = document.getElementById('editModal');
           const editUserModal = document.getElementById('editUserModal');
+          const editPricingModal = document.getElementById('editPricingModal');
 
           if (event.target === editModal) {
             closeEditModal();
           }
           if (event.target === editUserModal) {
             closeEditUserModal();
+          }
+          if (event.target === editPricingModal) {
+            closeEditPricingModal();
+          }
+        }
+
+        // Charger les prix
+        async function loadPricing() {
+          try {
+            const response = await fetch('/admin/api/pricing');
+            const prices = await response.json();
+
+            if (prices.length === 0) {
+              document.getElementById('pricingTable').innerHTML = '<div class="empty">Aucun prix configuré. Cliquez sur "Initialiser les prix par défaut" pour commencer.</div>';
+              return;
+            }
+
+            const planLabels = {
+              monthly: 'Mensuel',
+              quarterly: 'Trimestriel',
+              yearly: 'Annuel'
+            };
+
+            const providerLabels = {
+              all: 'Tous',
+              paypal: 'PayPal',
+              revolut: 'Revolut'
+            };
+
+            let html = '<table><thead><tr><th>Plan</th><th>Provider</th><th>Prix</th><th>Devise</th><th>Description</th><th>Actions</th></tr></thead><tbody>';
+
+            prices.forEach(price => {
+              const priceId = price._id.toString ? price._id.toString() : price._id;
+
+              html += \`
+                <tr>
+                  <td>\${planLabels[price.plan]}</td>
+                  <td>\${providerLabels[price.provider]}</td>
+                  <td>\${price.price.toFixed(2)}</td>
+                  <td>\${price.currency}</td>
+                  <td>\${price.description || '-'}</td>
+                  <td>
+                    <button class="action-btn" onclick="editPricing('\${priceId}', '\${price.plan}', '\${price.provider}', \${price.price}, '\${price.currency}', '\${price.description || ''}')">Modifier</button>
+                  </td>
+                </tr>
+              \`;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('pricingTable').innerHTML = html;
+          } catch (error) {
+            console.error('Erreur lors du chargement des prix:', error);
+            document.getElementById('pricingTable').innerHTML = '<div class="empty">Erreur lors du chargement</div>';
+          }
+        }
+
+        // Initialiser les prix par défaut
+        async function initializePricing() {
+          if (!confirm('Êtes-vous sûr de vouloir initialiser les prix par défaut ? Cela ne fonctionnera que si aucun prix n\\'existe déjà.')) {
+            return;
+          }
+
+          try {
+            const response = await fetch('/admin/api/pricing/init', {
+              method: 'POST'
+            });
+
+            if (response.ok) {
+              alert('Prix initialisés avec succès');
+              loadPricing();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de l\\'initialisation'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de l\\'initialisation:', error);
+            alert('Erreur lors de l\\'initialisation');
+          }
+        }
+
+        // Éditer un prix
+        let currentPricingId = null;
+
+        function editPricing(pricingId, plan, provider, price, currency, description) {
+          currentPricingId = pricingId;
+
+          document.getElementById('editPricePlan').value = plan;
+          document.getElementById('editPriceProvider').value = provider;
+          document.getElementById('editPriceAmount').value = price;
+          document.getElementById('editPriceCurrency').value = currency;
+          document.getElementById('editPriceDescription').value = description;
+
+          document.getElementById('editPricingModal').classList.add('show');
+        }
+
+        // Fermer la modale d'édition des prix
+        function closeEditPricingModal() {
+          document.getElementById('editPricingModal').classList.remove('show');
+          currentPricingId = null;
+        }
+
+        // Sauvegarder les modifications du prix
+        async function savePricing() {
+          if (!currentPricingId) return;
+
+          const price = parseFloat(document.getElementById('editPriceAmount').value);
+          const description = document.getElementById('editPriceDescription').value;
+
+          if (isNaN(price) || price < 0) {
+            alert('Prix invalide');
+            return;
+          }
+
+          try {
+            const response = await fetch(\`/admin/api/pricing/\${currentPricingId}\`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ price, description })
+            });
+
+            if (response.ok) {
+              alert('Prix modifié avec succès');
+              closeEditPricingModal();
+              loadPricing();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la modification'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la sauvegarde:', error);
+            alert('Erreur lors de la sauvegarde');
           }
         }
 
@@ -1042,6 +1221,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
         loadUsers();
         loadSubscriptions();
         loadPayments();
+        loadPricing();
 
         // Rafraîchir les stats toutes les 30 secondes
         setInterval(loadStats, 30000);
@@ -1432,6 +1612,79 @@ router.delete('/api/payments/:id', requireAuth, async (req: Request, res: Respon
     res.json({ success: true });
   } catch (error) {
     logger.error({ error }, 'Payment deletion error');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== Pricing Routes ====================
+
+// Get all pricing configurations
+router.get('/api/pricing', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const prices = await PricingConfig.find().sort({ plan: 1, provider: 1 });
+    res.json(prices);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching pricing');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Update a pricing configuration
+router.put('/api/pricing/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { price, description } = req.body;
+
+    if (price !== undefined && (typeof price !== 'number' || price < 0)) {
+      res.status(400).json({ error: 'Prix invalide' });
+      return;
+    }
+
+    const updateData: any = {};
+    if (price !== undefined) updateData.price = price;
+    if (description !== undefined) updateData.description = description;
+
+    const pricing = await PricingConfig.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    if (!pricing) {
+      res.status(404).json({ error: 'Configuration de prix non trouvée' });
+      return;
+    }
+
+    logger.info({ updateData }, `Pricing ${req.params.id} updated by admin ${req.session.username}`);
+
+    res.json(pricing);
+  } catch (error) {
+    logger.error({ error }, 'Error updating pricing');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Initialize default pricing (only if no pricing exists)
+router.post('/api/pricing/init', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const existingCount = await PricingConfig.countDocuments();
+    if (existingCount > 0) {
+      res.status(400).json({ error: 'Les prix sont déjà configurés' });
+      return;
+    }
+
+    const defaultPrices = [
+      { plan: 'monthly', provider: 'all', price: 0.99, currency: 'EUR', description: 'Abonnement mensuel' },
+      { plan: 'quarterly', provider: 'all', price: 24.99, currency: 'EUR', description: 'Abonnement trimestriel' },
+      { plan: 'yearly', provider: 'all', price: 89.99, currency: 'EUR', description: 'Abonnement annuel' },
+    ];
+
+    const prices = await PricingConfig.insertMany(defaultPrices);
+
+    logger.info(`Default pricing initialized by admin ${_req.session.username}`);
+
+    res.json(prices);
+  } catch (error) {
+    logger.error({ error }, 'Error initializing pricing');
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

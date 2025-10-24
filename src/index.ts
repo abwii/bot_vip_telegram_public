@@ -11,6 +11,7 @@ import { revolutService } from './payments/revolut';
 import { User } from './models/User';
 import { Subscription } from './models/Subscription';
 import { Payment } from './models/Payment';
+import { PricingConfig } from './models/PricingConfig';
 import adminRoutes from './admin/routes';
 
 // Logger
@@ -59,6 +60,17 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 // Health check
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Public API - Get pricing (no authentication required)
+app.get('/api/pricing', async (_req: Request, res: Response) => {
+  try {
+    const prices = await PricingConfig.find({ provider: 'all' }).sort({ plan: 1 });
+    res.json(prices);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching public pricing');
+    res.status(500).json({ error: 'Error fetching pricing' });
+  }
 });
 
 // Admin routes

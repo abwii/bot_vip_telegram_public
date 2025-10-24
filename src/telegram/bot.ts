@@ -3,6 +3,7 @@ import { config } from '../config';
 import { VipManager } from './vip';
 import { User } from '../models/User';
 import { Subscription } from '../models/Subscription';
+import { PricingConfig } from '../models/PricingConfig';
 // import { Payment } from '../models/Payment';
 import { paypalService } from '../payments/paypal';
 import { revolutService } from '../payments/revolut';
@@ -17,6 +18,39 @@ export class TelegramBot {
     this.vipManager = new VipManager(this.bot);
     this.setupCommands();
     this.setupHandlers();
+  }
+
+  // Helper method to get prices from database
+  private async getPrices(provider: 'paypal' | 'revolut' = 'paypal'): Promise<{ monthly: number; quarterly: number; yearly: number }> {
+    try {
+      const prices = await PricingConfig.find({
+        $or: [
+          { provider: 'all' },
+          { provider }
+        ]
+      });
+
+      // Prioritize provider-specific prices over 'all'
+      const getPrice = (plan: 'monthly' | 'quarterly' | 'yearly') => {
+        const providerPrice = prices.find(p => p.plan === plan && p.provider === provider);
+        const allPrice = prices.find(p => p.plan === plan && p.provider === 'all');
+        return providerPrice?.price ?? allPrice?.price ?? 0;
+      };
+
+      return {
+        monthly: getPrice('monthly'),
+        quarterly: getPrice('quarterly'),
+        yearly: getPrice('yearly'),
+      };
+    } catch (error) {
+      logger.error({ error }, 'Error fetching prices from database');
+      // Fallback to default prices if database fails
+      return {
+        monthly: 0.99,
+        quarterly: 24.99,
+        yearly: 89.99,
+      };
+    }
   }
 
   private setupCommands(): void {
@@ -53,12 +87,13 @@ export class TelegramBot {
 
     // Commande d'abonnement
     this.bot.command('subscribe', async (ctx) => {
+      const prices = await this.getPrices();
       await ctx.reply(
         '💎 Choisissez votre plan VIP :',
         Markup.inlineKeyboard([
-          [Markup.button.callback('Mensuel - 0.99€', 'plan_monthly')],
-          [Markup.button.callback('Trimestriel - 24.99€', 'plan_quarterly')],
-          [Markup.button.callback('Annuel - 89.99€', 'plan_yearly')],
+          [Markup.button.callback(`Mensuel - ${prices.monthly.toFixed(2)}€`, 'plan_monthly')],
+          [Markup.button.callback(`Trimestriel - ${prices.quarterly.toFixed(2)}€`, 'plan_quarterly')],
+          [Markup.button.callback(`Annuel - ${prices.yearly.toFixed(2)}€`, 'plan_yearly')],
         ])
       );
     });
@@ -103,17 +138,23 @@ export class TelegramBot {
 
     // Commande des plans
     this.bot.command('plans', async (ctx) => {
+      const prices = await this.getPrices();
+      const monthlyTotal = prices.monthly * 3;
+      const yearlyTotal = prices.monthly * 12;
+      const quarterlySavings = (monthlyTotal - prices.quarterly).toFixed(2);
+      const yearlySavings = (yearlyTotal - prices.yearly).toFixed(2);
+
       await ctx.reply(
         '💎 Plans VIP disponibles :\n\n' +
-        '📅 Mensuel - 0.99€/mois\n' +
+        `📅 Mensuel - ${prices.monthly.toFixed(2)}€/mois\n` +
         '• Accès complet au groupe VIP\n' +
         '• Support prioritaire\n' +
         '• Contenu exclusif\n\n' +
-        '📅 Trimestriel - 24.99€ (3 mois)\n' +
-        '• Économisez 5€\n' +
+        `📅 Trimestriel - ${prices.quarterly.toFixed(2)}€ (3 mois)\n` +
+        `• Économisez ${quarterlySavings}€\n` +
         '• Tous les avantages mensuels\n\n' +
-        '📅 Annuel - 89.99€ (12 mois)\n' +
-        '• Économisez 30€\n' +
+        `📅 Annuel - ${prices.yearly.toFixed(2)}€ (12 mois)\n` +
+        `• Économisez ${yearlySavings}€\n` +
         '• Tous les avantages mensuels\n\n' +
         'Utilisez /subscribe pour commencer !'
       );
@@ -223,12 +264,13 @@ export class TelegramBot {
   private setupHandlers(): void {
     // Gestion des messages texte pour les boutons du clavier
     this.bot.hears('💎 S\'abonner', async (ctx) => {
+      const prices = await this.getPrices();
       await ctx.reply(
         '💎 Choisissez votre plan VIP :',
         Markup.inlineKeyboard([
-          [Markup.button.callback('Mensuel - 0.99€', 'plan_monthly')],
-          [Markup.button.callback('Trimestriel - 24.99€', 'plan_quarterly')],
-          [Markup.button.callback('Annuel - 89.99€', 'plan_yearly')],
+          [Markup.button.callback(`Mensuel - ${prices.monthly.toFixed(2)}€`, 'plan_monthly')],
+          [Markup.button.callback(`Trimestriel - ${prices.quarterly.toFixed(2)}€`, 'plan_quarterly')],
+          [Markup.button.callback(`Annuel - ${prices.yearly.toFixed(2)}€`, 'plan_yearly')],
         ])
       );
     });
@@ -271,17 +313,23 @@ export class TelegramBot {
     });
 
     this.bot.hears('📋 Voir les plans', async (ctx) => {
+      const prices = await this.getPrices();
+      const monthlyTotal = prices.monthly * 3;
+      const yearlyTotal = prices.monthly * 12;
+      const quarterlySavings = (monthlyTotal - prices.quarterly).toFixed(2);
+      const yearlySavings = (yearlyTotal - prices.yearly).toFixed(2);
+
       await ctx.reply(
         '💎 Plans VIP disponibles :\n\n' +
-        '📅 Mensuel - 0.99€/mois\n' +
+        `📅 Mensuel - ${prices.monthly.toFixed(2)}€/mois\n` +
         '• Accès complet au groupe VIP\n' +
         '• Support prioritaire\n' +
         '• Contenu exclusif\n\n' +
-        '📅 Trimestriel - 24.99€ (3 mois)\n' +
-        '• Économisez 5€\n' +
+        `📅 Trimestriel - ${prices.quarterly.toFixed(2)}€ (3 mois)\n` +
+        `• Économisez ${quarterlySavings}€\n` +
         '• Tous les avantages mensuels\n\n' +
-        '📅 Annuel - 89.99€ (12 mois)\n' +
-        '• Économisez 30€\n' +
+        `📅 Annuel - ${prices.yearly.toFixed(2)}€ (12 mois)\n` +
+        `• Économisez ${yearlySavings}€\n` +
         '• Tous les avantages mensuels\n\n' +
         'Utilisez /subscribe pour commencer !'
       );
@@ -356,11 +404,7 @@ export class TelegramBot {
       await ctx.reply('⏳ Création de votre commande PayPal...');
 
       try {
-        const amounts = {
-          monthly: 0.99,
-          quarterly: 24.99,
-          yearly: 89.99,
-        };
+        const amounts = await this.getPrices('paypal');
 
         const order = await paypalService.createOrder(
           amounts[plan],
@@ -402,11 +446,7 @@ export class TelegramBot {
       await ctx.reply('⏳ Création de votre commande Revolut...');
 
       try {
-        const amounts = {
-          monthly: 9.99,
-          quarterly: 24.99,
-          yearly: 89.99,
-        };
+        const amounts = await this.getPrices('revolut');
 
         const order = await revolutService.createOrder(
           amounts[plan],
