@@ -7,6 +7,7 @@ export interface IUser extends Document {
   lastName?: string;
   isVip: boolean;
   vipUntil?: Date;
+  hasUsedTrial: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +38,10 @@ const UserSchema: Schema = new Schema(
     vipUntil: {
       type: Date,
       index: true,
+    },
+    hasUsedTrial: {
+      type: Boolean,
+      default: false,
     },
   },
   {

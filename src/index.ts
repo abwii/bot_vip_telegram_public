@@ -11,7 +11,7 @@ import { revolutService } from './payments/revolut';
 import { User } from './models/User';
 import { Subscription } from './models/Subscription';
 import { Payment } from './models/Payment';
-import adminRoutes from './admin/simple-routes';
+import adminRoutes from './admin/routes';
 
 // Logger
 export const logger = pino({

@@ -168,9 +168,880 @@ router.get('/login', (req: Request, res: Response) => {
   `);
 });
 
-// Redirection vers simple-routes pour le dashboard
-router.get('/dashboard', requireAuthWeb, (_req: Request, res: Response) => {
-  res.redirect('/admin/simple/dashboard');
+// Page du dashboard
+router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Admin - Dashboard</title>
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+          background: #f5f5f5;
+        }
+        .header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 20px 40px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+          font-size: 24px;
+        }
+        .header-right {
+          display: flex;
+          gap: 20px;
+          align-items: center;
+        }
+        .username {
+          font-weight: 500;
+        }
+        .logout-btn {
+          background: rgba(255,255,255,0.2);
+          color: white;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 14px;
+          transition: background 0.3s;
+        }
+        .logout-btn:hover {
+          background: rgba(255,255,255,0.3);
+        }
+        .container {
+          max-width: 1400px;
+          margin: 0 auto;
+          padding: 40px 20px;
+        }
+        .stats {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+          gap: 20px;
+          margin-bottom: 40px;
+        }
+        .stat-card {
+          background: white;
+          padding: 25px;
+          border-radius: 10px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .stat-card h3 {
+          color: #666;
+          font-size: 14px;
+          font-weight: 500;
+          margin-bottom: 10px;
+        }
+        .stat-card .value {
+          color: #333;
+          font-size: 32px;
+          font-weight: 700;
+        }
+        .stat-card .icon {
+          font-size: 24px;
+          margin-bottom: 10px;
+        }
+        .section {
+          background: white;
+          border-radius: 10px;
+          padding: 30px;
+          margin-bottom: 20px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .section h2 {
+          margin-bottom: 20px;
+          color: #333;
+        }
+        .filters {
+          display: flex;
+          gap: 15px;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+        }
+        .filters input, .filters select {
+          padding: 10px;
+          border: 1px solid #ddd;
+          border-radius: 5px;
+          font-size: 14px;
+        }
+        .filters button {
+          padding: 10px 20px;
+          background: #667eea;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        th {
+          background: #f8f9fa;
+          padding: 12px;
+          text-align: left;
+          font-weight: 600;
+          color: #333;
+          border-bottom: 2px solid #e9ecef;
+        }
+        td {
+          padding: 12px;
+          border-bottom: 1px solid #e9ecef;
+        }
+        tr:hover {
+          background: #f8f9fa;
+        }
+        .badge {
+          display: inline-block;
+          padding: 4px 12px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .badge-success {
+          background: #d4edda;
+          color: #155724;
+        }
+        .badge-danger {
+          background: #f8d7da;
+          color: #721c24;
+        }
+        .badge-warning {
+          background: #fff3cd;
+          color: #856404;
+        }
+        .badge-info {
+          background: #d1ecf1;
+          color: #0c5460;
+        }
+        .loading {
+          text-align: center;
+          padding: 40px;
+          color: #666;
+        }
+        .empty {
+          text-align: center;
+          padding: 40px;
+          color: #999;
+        }
+        .action-btn {
+          background: transparent;
+          border: 1px solid #667eea;
+          color: #667eea;
+          padding: 4px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+          margin-right: 5px;
+        }
+        .action-btn:hover {
+          background: #667eea;
+          color: white;
+        }
+        .action-btn-danger {
+          border-color: #dc3545;
+          color: #dc3545;
+        }
+        .action-btn-danger:hover {
+          background: #dc3545;
+          color: white;
+        }
+        .modal {
+          display: none;
+          position: fixed;
+          z-index: 1000;
+          left: 0;
+          top: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0,0,0,0.5);
+          align-items: center;
+          justify-content: center;
+        }
+        .modal.show {
+          display: flex;
+        }
+        .modal-content {
+          background: white;
+          border-radius: 10px;
+          padding: 30px;
+          max-width: 500px;
+          width: 90%;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+          margin-bottom: 20px;
+        }
+        .modal-header h3 {
+          margin: 0;
+          color: #333;
+        }
+        .modal-body {
+          margin-bottom: 20px;
+        }
+        .modal-body .form-group {
+          margin-bottom: 15px;
+        }
+        .modal-body label {
+          display: block;
+          margin-bottom: 5px;
+          font-weight: 600;
+          color: #333;
+        }
+        .modal-body input, .modal-body select {
+          width: 100%;
+          padding: 10px;
+          border: 1px solid #ddd;
+          border-radius: 5px;
+          font-size: 14px;
+        }
+        .modal-footer {
+          display: flex;
+          gap: 10px;
+          justify-content: flex-end;
+        }
+        .modal-footer button {
+          padding: 10px 20px;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        .btn-primary {
+          background: #667eea;
+          color: white;
+        }
+        .btn-primary:hover {
+          background: #5568d3;
+        }
+        .btn-secondary {
+          background: #6c757d;
+          color: white;
+        }
+        .btn-secondary:hover {
+          background: #5a6268;
+        }
+        .btn-danger {
+          background: #dc3545;
+          color: white;
+        }
+        .btn-danger:hover {
+          background: #c82333;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>📊 Panneau d'administration</h1>
+        <div class="header-right">
+          <span class="username">👤 ${req.session.username || 'Admin'}</span>
+          <button class="logout-btn" onclick="logout()">Déconnexion</button>
+        </div>
+      </div>
+
+      <div class="container">
+        <!-- Statistiques -->
+        <div class="stats">
+          <div class="stat-card">
+            <div class="icon">👥</div>
+            <h3>Total Utilisateurs</h3>
+            <div class="value" id="totalUsers">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="icon">⭐</div>
+            <h3>Utilisateurs VIP</h3>
+            <div class="value" id="vipUsers">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="icon">📝</div>
+            <h3>Abonnements Actifs</h3>
+            <div class="value" id="activeSubscriptions">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="icon">💰</div>
+            <h3>Paiements Complétés</h3>
+            <div class="value" id="completedPayments">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="icon">📊</div>
+            <h3>Revenu Mensuel</h3>
+            <div class="value" id="monthlyIncome">-</div>
+          </div>
+          <div class="stat-card">
+            <div class="icon">💵</div>
+            <h3>Revenu Total</h3>
+            <div class="value" id="totalIncome">-</div>
+          </div>
+        </div>
+
+        <!-- Liste des utilisateurs -->
+        <div class="section">
+          <h2>👥 Liste des clients</h2>
+
+          <div class="filters">
+            <input type="text" id="searchInput" placeholder="Rechercher par nom, username, Telegram ID...">
+            <select id="vipFilter">
+              <option value="all">Tous les utilisateurs</option>
+              <option value="vip">VIP uniquement</option>
+              <option value="non-vip">Non-VIP uniquement</option>
+            </select>
+            <button onclick="loadUsers()">Rechercher</button>
+          </div>
+
+          <div id="usersTable">
+            <div class="loading">Chargement...</div>
+          </div>
+        </div>
+
+        <!-- Abonnements récents -->
+        <div class="section">
+          <h2>📝 Abonnements récents</h2>
+          <div id="subscriptionsTable">
+            <div class="loading">Chargement...</div>
+          </div>
+        </div>
+
+        <!-- Paiements récents -->
+        <div class="section">
+          <h2>💳 Paiements récents</h2>
+          <div id="paymentsTable">
+            <div class="loading">Chargement...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal pour éditer un abonnement -->
+      <div id="editModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Modifier l'abonnement</h3>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="editStartDate">Date de début</label>
+              <input type="date" id="editStartDate" required>
+            </div>
+            <div class="form-group">
+              <label for="editEndDate">Date de fin</label>
+              <input type="date" id="editEndDate" required>
+            </div>
+            <div class="form-group">
+              <label for="editStatus">Statut</label>
+              <select id="editStatus">
+                <option value="active">Actif</option>
+                <option value="expired">Expiré</option>
+                <option value="cancelled">Annulé</option>
+                <option value="pending">En attente</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeEditModal()">Annuler</button>
+            <button class="btn-primary" onclick="saveSubscription()">Enregistrer</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal pour éditer un utilisateur -->
+      <div id="editUserModal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3>Modifier l'utilisateur</h3>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="editUserVipStatus">Statut VIP</label>
+              <select id="editUserVipStatus">
+                <option value="true">VIP</option>
+                <option value="false">Non-VIP</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="editUserVipUntil">VIP jusqu'au (laisser vide pour retirer le VIP)</label>
+              <input type="date" id="editUserVipUntil">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeEditUserModal()">Annuler</button>
+            <button class="btn-primary" onclick="saveUser()">Enregistrer</button>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        let currentSubscriptionId = null;
+        let currentUserId = null;
+
+        // Charger les statistiques
+        async function loadStats() {
+          try {
+            const response = await fetch('/admin/api/stats');
+            const data = await response.json();
+
+            document.getElementById('totalUsers').textContent = data.totalUsers;
+            document.getElementById('vipUsers').textContent = data.vipUsers;
+            document.getElementById('activeSubscriptions').textContent = data.activeSubscriptions;
+            document.getElementById('completedPayments').textContent = data.completedPayments;
+            document.getElementById('monthlyIncome').textContent = data.monthlyIncome ? data.monthlyIncome.toFixed(2) + '€' : '0.00€';
+            document.getElementById('totalIncome').textContent = data.totalIncome ? data.totalIncome.toFixed(2) + '€' : '0.00€';
+          } catch (error) {
+            console.error('Erreur lors du chargement des stats:', error);
+          }
+        }
+
+        // Charger les utilisateurs
+        async function loadUsers() {
+          const search = document.getElementById('searchInput').value;
+          const vipFilter = document.getElementById('vipFilter').value;
+
+          try {
+            const response = await fetch(\`/admin/api/users?search=\${search}&vipFilter=\${vipFilter}\`);
+            const users = await response.json();
+
+            if (users.length === 0) {
+              document.getElementById('usersTable').innerHTML = '<div class="empty">Aucun utilisateur trouvé</div>';
+              return;
+            }
+
+            let html = '<table><thead><tr><th>Telegram ID</th><th>Nom</th><th>Username</th><th>Statut VIP</th><th>VIP jusqu\\'à</th><th>Date création</th><th>Actions</th></tr></thead><tbody>';
+
+            const formatDate = (date) => {
+              if (!date) return '-';
+              const d = new Date(date);
+              const day = String(d.getDate()).padStart(2, '0');
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const year = d.getFullYear();
+              return \`\${day}/\${month}/\${year}\`;
+            };
+
+            users.forEach(user => {
+              const vipBadge = user.isVip
+                ? '<span class="badge badge-success">VIP</span>'
+                : '<span class="badge badge-danger">Non-VIP</span>';
+
+              const vipUntil = formatDate(user.vipUntil);
+              const createdAt = formatDate(user.createdAt);
+              const userId = user._id.toString ? user._id.toString() : user._id;
+
+              html += \`
+                <tr>
+                  <td>\${user.telegramId}</td>
+                  <td>\${user.firstName || ''} \${user.lastName || ''}</td>
+                  <td>@\${user.username || 'N/A'}</td>
+                  <td>\${vipBadge}</td>
+                  <td>\${vipUntil}</td>
+                  <td>\${createdAt}</td>
+                  <td>
+                    <button class="action-btn" onclick="editUser('\${userId}')">Modifier</button>
+                    <button class="action-btn action-btn-danger" onclick="deleteUser('\${userId}')">Supprimer</button>
+                  </td>
+                </tr>
+              \`;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('usersTable').innerHTML = html;
+          } catch (error) {
+            console.error('Erreur lors du chargement des utilisateurs:', error);
+            document.getElementById('usersTable').innerHTML = '<div class="empty">Erreur lors du chargement</div>';
+          }
+        }
+
+        // Charger les abonnements
+        async function loadSubscriptions() {
+          try {
+            const response = await fetch('/admin/api/subscriptions?limit=10');
+            const subscriptions = await response.json();
+
+            if (subscriptions.length === 0) {
+              document.getElementById('subscriptionsTable').innerHTML = '<div class="empty">Aucun abonnement trouvé</div>';
+              return;
+            }
+
+            let html = '<table><thead><tr><th>Telegram ID</th><th>Plan</th><th>Statut</th><th>Début</th><th>Fin</th><th>Provider</th><th>Auto-renouvellement</th><th>Actions</th></tr></thead><tbody>';
+
+            subscriptions.forEach(sub => {
+              const statusBadges = {
+                active: '<span class="badge badge-success">Actif</span>',
+                expired: '<span class="badge badge-danger">Expiré</span>',
+                cancelled: '<span class="badge badge-warning">Annulé</span>',
+                pending: '<span class="badge badge-info">En attente</span>'
+              };
+
+              const planLabels = {
+                monthly: 'Mensuel',
+                quarterly: 'Trimestriel',
+                yearly: 'Annuel'
+              };
+
+              const formatDate = (date) => {
+                const d = new Date(date);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                return \`\${day}/\${month}/\${year}\`;
+              };
+
+              const subId = sub._id.toString ? sub._id.toString() : sub._id;
+
+              html += \`
+                <tr>
+                  <td>\${sub.telegramId}</td>
+                  <td>\${planLabels[sub.plan]}</td>
+                  <td>\${statusBadges[sub.status]}</td>
+                  <td>\${formatDate(sub.startDate)}</td>
+                  <td>\${formatDate(sub.endDate)}</td>
+                  <td>\${sub.paymentProvider}</td>
+                  <td>\${sub.autoRenew ? '✅' : '❌'}</td>
+                  <td>
+                    <button class="action-btn" onclick="editSubscription('\${subId}')">Modifier</button>
+                    <button class="action-btn action-btn-danger" onclick="deleteSubscription('\${subId}')">Supprimer</button>
+                  </td>
+                </tr>
+              \`;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('subscriptionsTable').innerHTML = html;
+          } catch (error) {
+            console.error('Erreur lors du chargement des abonnements:', error);
+            document.getElementById('subscriptionsTable').innerHTML = '<div class="empty">Erreur lors du chargement</div>';
+          }
+        }
+
+        // Charger les paiements
+        async function loadPayments() {
+          try {
+            const response = await fetch('/admin/api/payments?limit=10');
+            const payments = await response.json();
+
+            if (payments.length === 0) {
+              document.getElementById('paymentsTable').innerHTML = '<div class="empty">Aucun paiement trouvé</div>';
+              return;
+            }
+
+            let html = '<table><thead><tr><th>Telegram ID</th><th>Nom</th><th>Montant</th><th>Devise</th><th>Provider</th><th>Statut</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
+
+            payments.forEach(payment => {
+              const statusBadges = {
+                completed: '<span class="badge badge-success">Complété</span>',
+                pending: '<span class="badge badge-info">En attente</span>',
+                failed: '<span class="badge badge-danger">Échoué</span>',
+                refunded: '<span class="badge badge-warning">Remboursé</span>'
+              };
+
+              const formatDate = (date) => {
+                const d = new Date(date);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                return \`\${day}/\${month}/\${year}\`;
+              };
+
+              const paymentId = payment._id.toString ? payment._id.toString() : payment._id;
+              const userName = payment.userId ? \`\${payment.userId.firstName || ''} \${payment.userId.lastName || ''}\`.trim() || 'N/A' : 'N/A';
+
+              html += \`
+                <tr>
+                  <td>\${payment.telegramId}</td>
+                  <td>\${userName}</td>
+                  <td>\${payment.amount.toFixed(2)}</td>
+                  <td>\${payment.currency}</td>
+                  <td>\${payment.provider}</td>
+                  <td>\${statusBadges[payment.status]}</td>
+                  <td>\${formatDate(payment.createdAt)}</td>
+                  <td>
+                    <button class="action-btn action-btn-danger" onclick="deletePayment('\${paymentId}')">Supprimer</button>
+                  </td>
+                </tr>
+              \`;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('paymentsTable').innerHTML = html;
+          } catch (error) {
+            console.error('Erreur lors du chargement des paiements:', error);
+            document.getElementById('paymentsTable').innerHTML = '<div class="empty">Erreur lors du chargement</div>';
+          }
+        }
+
+        // Déconnexion
+        async function logout() {
+          try {
+            await fetch('/admin/api/logout', { method: 'POST' });
+            window.location.href = '/admin/login';
+          } catch (error) {
+            console.error('Erreur lors de la déconnexion:', error);
+          }
+        }
+
+        // Éditer un abonnement
+        async function editSubscription(subscriptionId) {
+          console.log('Editing subscription:', subscriptionId);
+          currentSubscriptionId = subscriptionId;
+
+          try {
+            const response = await fetch(\`/admin/api/subscriptions/\${subscriptionId}\`);
+
+            if (!response.ok) {
+              const error = await response.json();
+              console.error('Failed to fetch subscription:', error);
+              alert('Erreur lors du chargement de l\\'abonnement: ' + (error.error || 'Erreur inconnue'));
+              return;
+            }
+
+            const subscription = await response.json();
+            console.log('Subscription loaded:', subscription);
+
+            // Convertir les dates au format YYYY-MM-DD pour les inputs
+            const startDate = new Date(subscription.startDate);
+            const endDate = new Date(subscription.endDate);
+
+            document.getElementById('editStartDate').value = startDate.toISOString().split('T')[0];
+            document.getElementById('editEndDate').value = endDate.toISOString().split('T')[0];
+            document.getElementById('editStatus').value = subscription.status;
+
+            document.getElementById('editModal').classList.add('show');
+          } catch (error) {
+            console.error('Erreur lors du chargement de l\\'abonnement:', error);
+            alert('Erreur lors du chargement de l\\'abonnement');
+          }
+        }
+
+        // Fermer la modale d'édition
+        function closeEditModal() {
+          document.getElementById('editModal').classList.remove('show');
+          currentSubscriptionId = null;
+        }
+
+        // Sauvegarder les modifications
+        async function saveSubscription() {
+          if (!currentSubscriptionId) return;
+
+          const startDate = document.getElementById('editStartDate').value;
+          const endDate = document.getElementById('editEndDate').value;
+          const status = document.getElementById('editStatus').value;
+
+          if (!startDate || !endDate) {
+            alert('Veuillez remplir toutes les dates');
+            return;
+          }
+
+          try {
+            const response = await fetch(\`/admin/api/subscriptions/\${currentSubscriptionId}\`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ startDate, endDate, status })
+            });
+
+            if (response.ok) {
+              alert('Abonnement modifié avec succès');
+              closeEditModal();
+              loadSubscriptions();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la modification'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la sauvegarde:', error);
+            alert('Erreur lors de la sauvegarde');
+          }
+        }
+
+        // Supprimer un abonnement
+        async function deleteSubscription(subscriptionId) {
+          console.log('Deleting subscription:', subscriptionId);
+
+          if (!confirm('Êtes-vous sûr de vouloir supprimer cet abonnement ?')) {
+            return;
+          }
+
+          try {
+            const response = await fetch(\`/admin/api/subscriptions/\${subscriptionId}\`, {
+              method: 'DELETE'
+            });
+
+            console.log('Delete response status:', response.status);
+
+            if (response.ok) {
+              alert('Abonnement supprimé avec succès');
+              loadSubscriptions();
+              loadStats();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la suppression'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la suppression:', error);
+            alert('Erreur lors de la suppression');
+          }
+        }
+
+        // Supprimer un paiement
+        async function deletePayment(paymentId) {
+          console.log('Deleting payment:', paymentId);
+
+          if (!confirm('Êtes-vous sûr de vouloir supprimer ce paiement ?')) {
+            return;
+          }
+
+          try {
+            const response = await fetch(\`/admin/api/payments/\${paymentId}\`, {
+              method: 'DELETE'
+            });
+
+            console.log('Delete response status:', response.status);
+
+            if (response.ok) {
+              alert('Paiement supprimé avec succès');
+              loadPayments();
+              loadStats();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la suppression'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la suppression:', error);
+            alert('Erreur lors de la suppression');
+          }
+        }
+
+        // Éditer un utilisateur
+        async function editUser(userId) {
+          console.log('Editing user:', userId);
+          currentUserId = userId;
+
+          try {
+            const response = await fetch(\`/admin/api/users/\${userId}\`);
+
+            if (!response.ok) {
+              const error = await response.json();
+              console.error('Failed to fetch user:', error);
+              alert('Erreur lors du chargement de l\\'utilisateur: ' + (error.error || 'Erreur inconnue'));
+              return;
+            }
+
+            const data = await response.json();
+            const user = data.user;
+            console.log('User loaded:', user);
+
+            document.getElementById('editUserVipStatus').value = user.isVip ? 'true' : 'false';
+
+            if (user.vipUntil) {
+              const vipDate = new Date(user.vipUntil);
+              document.getElementById('editUserVipUntil').value = vipDate.toISOString().split('T')[0];
+            } else {
+              document.getElementById('editUserVipUntil').value = '';
+            }
+
+            document.getElementById('editUserModal').classList.add('show');
+          } catch (error) {
+            console.error('Erreur lors du chargement de l\\'utilisateur:', error);
+            alert('Erreur lors du chargement de l\\'utilisateur');
+          }
+        }
+
+        // Fermer la modale d'édition utilisateur
+        function closeEditUserModal() {
+          document.getElementById('editUserModal').classList.remove('show');
+          currentUserId = null;
+        }
+
+        // Sauvegarder les modifications d'un utilisateur
+        async function saveUser() {
+          if (!currentUserId) return;
+
+          const isVip = document.getElementById('editUserVipStatus').value === 'true';
+          const vipUntil = document.getElementById('editUserVipUntil').value;
+
+          try {
+            const response = await fetch(\`/admin/api/users/\${currentUserId}\`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ isVip, vipUntil: vipUntil || null })
+            });
+
+            if (response.ok) {
+              alert('Utilisateur modifié avec succès');
+              closeEditUserModal();
+              loadUsers();
+              loadStats();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la modification'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la sauvegarde:', error);
+            alert('Erreur lors de la sauvegarde');
+          }
+        }
+
+        // Supprimer un utilisateur
+        async function deleteUser(userId) {
+          console.log('Deleting user:', userId);
+
+          if (!confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ? Tous ses abonnements et paiements seront également supprimés.')) {
+            return;
+          }
+
+          try {
+            const response = await fetch(\`/admin/api/users/\${userId}\`, {
+              method: 'DELETE'
+            });
+
+            console.log('Delete response status:', response.status);
+
+            if (response.ok) {
+              alert('Utilisateur supprimé avec succès');
+              loadUsers();
+              loadStats();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la suppression'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la suppression:', error);
+            alert('Erreur lors de la suppression');
+          }
+        }
+
+        // Fermer les modales en cliquant en dehors
+        window.onclick = function(event) {
+          const editModal = document.getElementById('editModal');
+          const editUserModal = document.getElementById('editUserModal');
+
+          if (event.target === editModal) {
+            closeEditModal();
+          }
+          if (event.target === editUserModal) {
+            closeEditUserModal();
+          }
+        }
+
+        // Charger toutes les données au démarrage
+        loadStats();
+        loadUsers();
+        loadSubscriptions();
+        loadPayments();
+
+        // Rafraîchir les stats toutes les 30 secondes
+        setInterval(loadStats, 30000);
+      </script>
+    </body>
+    </html>
+  `);
 });
 
 // ==================== API Routes ====================

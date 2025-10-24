@@ -195,6 +195,29 @@ export class TelegramBot {
       );
     });
 
+    // Commande /testvip - DEBUG: Accorde 7 jours VIP (à retirer en prod)
+    this.bot.command('testvip', async (ctx) => {
+      const user = ctx.from;
+      if (!user) return;
+
+      try {
+        // Accorder 7 jours de VIP directement
+        await this.vipManager.grantVipAccess(user.id, 7);
+
+        logger.info(`[DEBUG] User ${user.id} (${user.username}) granted 7-day VIP via /testvip`);
+
+        await ctx.reply(
+          '🎉 [TEST] VIP accordé pour 7 jours !\n\n' +
+          '📅 Expire le ' +
+          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('fr-FR')
+        );
+
+      } catch (error) {
+        logger.error({ error, telegramId: user.id }, 'Error in /testvip command');
+        await ctx.reply('❌ Erreur lors de l\'activation du test VIP');
+      }
+    });
+
   }
 
   private setupHandlers(): void {
