@@ -8,6 +8,7 @@ import { TelegramBot } from './telegram/bot';
 import { schedulerService } from './scheduler/agenda';
 import { paypalService } from './payments/paypal';
 import { revolutService } from './payments/revolut';
+import { stripeService } from './payments/stripe';
 import { User } from './models/User';
 import { Subscription } from './models/Subscription';
 import { Payment } from './models/Payment';
@@ -155,6 +156,50 @@ app.post('/webhooks/revolut', async (req: Request, res: Response) => {
     return res.json({ received: true });
   } catch (error) {
     logger.error({ error }, 'Revolut webhook error');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Stripe webhooks
+app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (req: Request, res: Response) => {
+  try {
+    const signature = req.headers['stripe-signature'] as string;
+
+    if (!signature) {
+      logger.warn('Missing Stripe signature');
+      return res.status(401).json({ error: 'Missing signature' });
+    }
+
+    const event = stripeService.verifyWebhook(req.body, signature);
+
+    if (!event) {
+      logger.warn('Invalid Stripe webhook signature');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    logger.info({ eventType: event.type }, 'Stripe webhook received');
+
+    // Handle different event types
+    switch (event.type) {
+      case 'checkout.session.completed':
+        await handleStripeCheckoutCompleted(event);
+        break;
+
+      case 'payment_intent.succeeded':
+        logger.info('Stripe payment_intent.succeeded');
+        break;
+
+      case 'charge.refunded':
+        await handleStripeChargeRefunded(event);
+        break;
+
+      default:
+        logger.info(`Unhandled Stripe event type: ${event.type}`);
+    }
+
+    return res.json({ received: true });
+  } catch (error) {
+    logger.error({ error }, 'Stripe webhook error');
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -321,6 +366,101 @@ async function handleRevolutOrderCompleted(event: any): Promise<void> {
 async function handleRevolutOrderAuthorised(event: any): Promise<void> {
   logger.info('Revolut order authorised:', event.order_id);
 }
+
+// Handlers pour Stripe
+async function handleStripeCheckoutCompleted(event: any): Promise<void> {
+  const session = event.data.object;
+  const metadata = session.metadata;
+  const telegramId = parseInt(metadata.telegramId);
+  const plan = metadata.plan;
+
+  // Créer le paiement
+  const payment = new Payment({
+    telegramId,
+    provider: 'stripe',
+    externalPaymentId: session.payment_intent,
+    amount: session.amount_total / 100,
+    currency: session.currency.toUpperCase(),
+    status: 'completed',
+    metadata,
+  });
+
+  const user = await User.findOne({ telegramId });
+  if (user) {
+    payment.userId = user._id as any;
+  }
+
+  await payment.save();
+
+  // Créer l'abonnement et accorder l'accès VIP
+  const durations = { monthly: 30, quarterly: 90, yearly: 365 };
+  await bot.vipManager.grantVipAccess(telegramId, durations[plan as keyof typeof durations]);
+
+  const startDate = new Date();
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + durations[plan as keyof typeof durations]);
+
+  const subscription = new Subscription({
+    userId: user?._id,
+    telegramId,
+    plan,
+    status: 'active',
+    startDate,
+    endDate,
+    paymentProvider: 'stripe',
+    externalSubscriptionId: session.id,
+  });
+
+  await subscription.save();
+
+  logger.info(`VIP access granted to user ${telegramId} via Stripe`);
+}
+
+async function handleStripeChargeRefunded(event: any): Promise<void> {
+  const charge = event.data.object;
+
+  await Payment.updateMany(
+    { externalPaymentId: charge.payment_intent },
+    { status: 'refunded' }
+  );
+
+  logger.info('Stripe charge refunded:', charge.id);
+}
+
+// Stripe success/cancel redirects
+app.get('/payments/stripe/success', (_req: Request, res: Response) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Paiement réussi</title>
+      <meta charset="UTF-8">
+    </head>
+    <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+      <h1>✅ Paiement réussi !</h1>
+      <p>Votre accès VIP sera activé dans quelques instants.</p>
+      <p>Vous pouvez fermer cette page et retourner sur Telegram.</p>
+    </body>
+    </html>
+  `);
+});
+
+app.get('/payments/stripe/cancel', (_req: Request, res: Response) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Paiement annulé</title>
+      <meta charset="UTF-8">
+    </head>
+    <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+      <h1>❌ Paiement annulé</h1>
+      <p>Votre paiement a été annulé.</p>
+      <p>Vous pouvez fermer cette page et retourner sur Telegram pour réessayer.</p>
+    </body>
+    </html>
+  `);
+});
 
 // Gestionnaire d'erreurs global
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

@@ -2,7 +2,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IPricingConfig extends Document {
   plan: 'monthly' | 'quarterly' | 'yearly';
-  provider: 'paypal' | 'revolut' | 'all';
+  provider: 'paypal' | 'revolut' | 'stripe' | 'all';
   price: number;
   currency: string;
   description?: string;
@@ -19,7 +19,7 @@ const PricingConfigSchema = new Schema<IPricingConfig>(
     },
     provider: {
       type: String,
-      enum: ['paypal', 'revolut', 'all'],
+      enum: ['paypal', 'revolut', 'stripe', 'all'],
       required: true,
       default: 'all',
     },

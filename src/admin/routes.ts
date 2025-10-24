@@ -4,6 +4,7 @@ import { User } from '../models/User';
 import { Subscription } from '../models/Subscription';
 import { Payment } from '../models/Payment';
 import { PricingConfig } from '../models/PricingConfig';
+import { PaymentProvider } from '../models/PaymentProvider';
 import { requireAuth, requireAuthWeb } from '../middleware/auth';
 import { logger } from '../index';
 
@@ -536,6 +537,16 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             <button class="btn-primary" onclick="initializePricing()">Initialiser les prix par défaut</button>
           </div>
           <div id="pricingTable">
+            <div class="loading">Chargement...</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>💳 Méthodes de Paiement</h2>
+          <div style="margin-bottom: 1rem;">
+            <button class="btn-primary" onclick="initializeProviders()">Initialiser les providers par défaut</button>
+          </div>
+          <div id="providersTable">
             <div class="loading">Chargement...</div>
           </div>
         </div>
@@ -1108,7 +1119,8 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             const providerLabels = {
               all: 'Tous',
               paypal: 'PayPal',
-              revolut: 'Revolut'
+              revolut: 'Revolut',
+              stripe: 'Stripe'
             };
 
             let html = '<table><thead><tr><th>Plan</th><th>Provider</th><th>Prix</th><th>Devise</th><th>Description</th><th>Actions</th></tr></thead><tbody>';
@@ -1216,12 +1228,100 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           }
         }
 
+        // Charger les providers
+        async function loadProviders() {
+          try {
+            const response = await fetch('/admin/api/providers');
+            const providers = await response.json();
+
+            if (providers.length === 0) {
+              document.getElementById('providersTable').innerHTML = '<div class="empty">Aucun provider configuré. Cliquez sur "Initialiser les providers par défaut" pour commencer.</div>';
+              return;
+            }
+
+            let html = '<table><thead><tr><th>Provider</th><th>Nom d\\'affichage</th><th>Description</th><th>Statut</th><th>Actions</th></tr></thead><tbody>';
+
+            providers.forEach(provider => {
+              const providerId = provider._id.toString ? provider._id.toString() : provider._id;
+              const statusClass = provider.enabled ? 'status-active' : 'status-expired';
+              const statusText = provider.enabled ? 'Activé' : 'Désactivé';
+              const toggleText = provider.enabled ? 'Désactiver' : 'Activer';
+
+              html += \`
+                <tr>
+                  <td>\${provider.name}</td>
+                  <td>\${provider.displayName}</td>
+                  <td>\${provider.description || '-'}</td>
+                  <td><span class="\${statusClass}">\${statusText}</span></td>
+                  <td>
+                    <button class="action-btn" onclick="toggleProvider('\${providerId}', \${!provider.enabled})">\${toggleText}</button>
+                  </td>
+                </tr>
+              \`;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('providersTable').innerHTML = html;
+          } catch (error) {
+            console.error('Erreur lors du chargement des providers:', error);
+            document.getElementById('providersTable').innerHTML = '<div class="empty">Erreur lors du chargement</div>';
+          }
+        }
+
+        // Initialiser les providers par défaut
+        async function initializeProviders() {
+          if (!confirm('Êtes-vous sûr de vouloir initialiser les providers par défaut ? Cela ne fonctionnera que si aucun provider n\\'existe déjà.')) {
+            return;
+          }
+
+          try {
+            const response = await fetch('/admin/api/providers/init', {
+              method: 'POST'
+            });
+
+            if (response.ok) {
+              alert('Providers initialisés avec succès');
+              loadProviders();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de l\\'initialisation'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de l\\'initialisation:', error);
+            alert('Erreur lors de l\\'initialisation');
+          }
+        }
+
+        // Activer/Désactiver un provider
+        async function toggleProvider(providerId, enabled) {
+          try {
+            const response = await fetch(\`/admin/api/providers/\${providerId}\`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ enabled })
+            });
+
+            if (response.ok) {
+              loadProviders();
+            } else {
+              const error = await response.json();
+              alert('Erreur: ' + (error.error || 'Erreur lors de la mise à jour'));
+            }
+          } catch (error) {
+            console.error('Erreur lors de la mise à jour:', error);
+            alert('Erreur lors de la mise à jour');
+          }
+        }
+
         // Charger toutes les données au démarrage
         loadStats();
         loadUsers();
         loadSubscriptions();
         loadPayments();
         loadPricing();
+        loadProviders();
 
         // Rafraîchir les stats toutes les 30 secondes
         setInterval(loadStats, 30000);
@@ -1685,6 +1785,80 @@ router.post('/api/pricing/init', requireAuth, async (_req: Request, res: Respons
     res.json(prices);
   } catch (error) {
     logger.error({ error }, 'Error initializing pricing');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== Payment Provider Management ====================
+
+// Get all payment providers
+router.get('/api/providers', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const providers = await PaymentProvider.find().sort({ name: 1 });
+    res.json(providers);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching payment providers');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Update a payment provider (toggle enabled status)
+router.put('/api/providers/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { enabled, displayName, description } = req.body;
+
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      res.status(400).json({ error: 'Valeur enabled invalide' });
+      return;
+    }
+
+    const updateData: any = {};
+    if (enabled !== undefined) updateData.enabled = enabled;
+    if (displayName !== undefined) updateData.displayName = displayName;
+    if (description !== undefined) updateData.description = description;
+
+    const provider = await PaymentProvider.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    if (!provider) {
+      res.status(404).json({ error: 'Provider non trouvé' });
+      return;
+    }
+
+    logger.info({ updateData }, `Payment provider ${req.params.id} updated by admin ${req.session.username}`);
+
+    res.json(provider);
+  } catch (error) {
+    logger.error({ error }, 'Error updating payment provider');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Initialize default payment providers (only if no providers exist)
+router.post('/api/providers/init', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const existingCount = await PaymentProvider.countDocuments();
+    if (existingCount > 0) {
+      res.status(400).json({ error: 'Les providers sont déjà configurés' });
+      return;
+    }
+
+    const defaultProviders = [
+      { name: 'paypal', enabled: true, displayName: 'PayPal', description: 'Paiement via PayPal' },
+      { name: 'revolut', enabled: true, displayName: 'Revolut', description: 'Paiement via Revolut' },
+      { name: 'stripe', enabled: true, displayName: 'Stripe', description: 'Paiement par carte bancaire via Stripe' },
+    ];
+
+    const providers = await PaymentProvider.insertMany(defaultProviders);
+
+    logger.info(`Default payment providers initialized by admin ${_req.session.username}`);
+
+    res.json(providers);
+  } catch (error) {
+    logger.error({ error }, 'Error initializing payment providers');
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

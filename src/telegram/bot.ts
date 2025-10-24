@@ -4,9 +4,11 @@ import { VipManager } from './vip';
 import { User } from '../models/User';
 import { Subscription } from '../models/Subscription';
 import { PricingConfig } from '../models/PricingConfig';
+import { PaymentProvider } from '../models/PaymentProvider';
 // import { Payment } from '../models/Payment';
 import { paypalService } from '../payments/paypal';
 import { revolutService } from '../payments/revolut';
+import { stripeService } from '../payments/stripe';
 import { logger } from '../index';
 
 export class TelegramBot {
@@ -20,8 +22,32 @@ export class TelegramBot {
     this.setupHandlers();
   }
 
+  // Helper method to get enabled payment providers
+  private async getEnabledProviders(): Promise<string> {
+    try {
+      const providers = await PaymentProvider.find({ enabled: true }).sort({ name: 1 });
+
+      if (providers.length === 0) {
+        return '• Aucun moyen de paiement disponible pour le moment';
+      }
+
+      const providerEmojis: Record<string, string> = {
+        paypal: '💳',
+        revolut: '💰',
+        stripe: '💎',
+      };
+
+      return providers
+        .map(provider => `${providerEmojis[provider.name] || '•'} ${provider.displayName}`)
+        .join('\n');
+    } catch (error) {
+      logger.error({ error }, 'Error fetching enabled providers');
+      return '• PayPal\n• Revolut\n• Stripe';
+    }
+  }
+
   // Helper method to get prices from database
-  private async getPrices(provider: 'paypal' | 'revolut' = 'paypal'): Promise<{ monthly: number; quarterly: number; yearly: number }> {
+  private async getPrices(provider: 'paypal' | 'revolut' | 'stripe' = 'paypal'): Promise<{ monthly: number; quarterly: number; yearly: number }> {
     try {
       const prices = await PricingConfig.find({
         $or: [
@@ -219,6 +245,8 @@ export class TelegramBot {
 
     // Commande d'aide
     this.bot.command('help', async (ctx) => {
+      const paymentMethods = await this.getEnabledProviders();
+
       await ctx.reply(
         '📖 Aide - Bot VIP\n\n' +
         'Commandes disponibles :\n\n' +
@@ -229,9 +257,8 @@ export class TelegramBot {
         '/cancel - Annuler l\'abonnement\n' +
         '/unsubscribe - Se désinscrire du VIP\n' +
         '/help - Cette aide\n\n' +
-        '💳 Moyens de paiement :\n' +
-        '• PayPal\n' +
-        '• Revolut\n\n' +
+        'Moyens de paiement :\n' +
+        paymentMethods + '\n\n' +
         '❓ Besoin d\'aide ? Contactez @support'
       );
     });
@@ -362,6 +389,8 @@ export class TelegramBot {
     });
 
     this.bot.hears('📖 Aide', async (ctx) => {
+      const paymentMethods = await this.getEnabledProviders();
+
       await ctx.reply(
         '📖 Aide - Bot VIP\n\n' +
         'Commandes disponibles :\n\n' +
@@ -373,8 +402,7 @@ export class TelegramBot {
         '/unsubscribe - Se désinscrire du VIP\n' +
         '/help - Cette aide\n\n' +
         '💳 Moyens de paiement :\n' +
-        '• PayPal\n' +
-        '• Revolut\n\n' +
+        paymentMethods + '\n\n' +
         '❓ Besoin d\'aide ? Contactez @support'
       );
     });
@@ -384,13 +412,25 @@ export class TelegramBot {
       const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'yearly';
 
       await ctx.answerCbQuery();
+
+      // Récupérer les providers activés depuis la base de données
+      const enabledProviders = await PaymentProvider.find({ enabled: true }).sort({ name: 1 });
+
+      // Créer les boutons dynamiquement en fonction des providers activés
+      const providerButtons = enabledProviders.map(provider => {
+        let emoji = '💳';
+        if (provider.name === 'revolut') emoji = '💰';
+        if (provider.name === 'stripe') emoji = '💎';
+
+        return [Markup.button.callback(`${emoji} ${provider.displayName}`, `payment_${provider.name}_${plan}`)];
+      });
+
+      // Ajouter le bouton Annuler
+      providerButtons.push([Markup.button.callback('❌ Annuler', 'payment_cancel')]);
+
       await ctx.reply(
         'Choisissez votre méthode de paiement :',
-        Markup.inlineKeyboard([
-          [Markup.button.callback('💳 PayPal', `payment_paypal_${plan}`)],
-          [Markup.button.callback('💰 Revolut', `payment_revolut_${plan}`)],
-          [Markup.button.callback('❌ Annuler', 'payment_cancel')],
-        ])
+        Markup.inlineKeyboard(providerButtons)
       );
     });
 
@@ -471,6 +511,52 @@ export class TelegramBot {
       } catch (error) {
         logger.error({ error }, 'Revolut order creation error');
         await ctx.reply('❌ Erreur lors de la création de la commande. Veuillez réessayer.');
+      }
+    });
+
+    // Gestion des paiements Stripe
+    this.bot.action(/payment_stripe_(monthly|quarterly|yearly)/, async (ctx) => {
+      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'yearly';
+      const user = ctx.from;
+      if (!user) return;
+
+      await ctx.answerCbQuery();
+      await ctx.reply('⏳ Création de votre session de paiement Stripe...');
+
+      try {
+        const amounts = await this.getPrices('stripe');
+
+        const planNames = {
+          monthly: 'Abonnement VIP Mensuel',
+          quarterly: 'Abonnement VIP Trimestriel',
+          yearly: 'Abonnement VIP Annuel',
+        };
+
+        const session = await stripeService.createCheckoutSession(
+          amounts[plan],
+          'EUR',
+          {
+            telegramId: user.id.toString(),
+            plan,
+            username: user.username || '',
+            planName: planNames[plan],
+            planDescription: `Accès VIP pour ${plan === 'monthly' ? '30' : plan === 'quarterly' ? '90' : '365'} jours`,
+          }
+        );
+
+        await ctx.reply(
+          `✅ Session de paiement créée !\n\n` +
+          `Cliquez sur le lien ci-dessous pour payer :\n` +
+          `${session.url}\n\n` +
+          `Une fois le paiement effectué, votre accès VIP sera activé automatiquement.`,
+          Markup.inlineKeyboard([
+            [Markup.button.url('💎 Payer avec Stripe', session.url)],
+            [Markup.button.callback('❌ Annuler la commande', 'payment_cancel')],
+          ])
+        );
+      } catch (error) {
+        logger.error({ error }, 'Stripe checkout session creation error');
+        await ctx.reply('❌ Erreur lors de la création de la session de paiement. Veuillez réessayer.');
       }
     });
 

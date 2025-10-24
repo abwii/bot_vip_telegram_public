@@ -27,6 +27,10 @@ interface Config {
     apiKey: string;
     webhookSecret: string;
   };
+  stripe: {
+    secretKey: string;
+    webhookSecret: string;
+  };
 }
 
 function getEnvVar(key: string, defaultValue?: string): string {
@@ -61,5 +65,9 @@ export const config: Config = {
   revolut: {
     apiKey: getEnvVar('REVOLUT_API_KEY'),
     webhookSecret: getEnvVar('REVOLUT_WEBHOOK_SECRET'),
+  },
+  stripe: {
+    secretKey: getEnvVar('STRIPE_SECRET_KEY'),
+    webhookSecret: getEnvVar('STRIPE_WEBHOOK_SECRET'),
   },
 };
