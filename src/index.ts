@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import pino from 'pino';
+import path from 'path';
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
 import { config } from './config';
@@ -47,7 +48,7 @@ app.use(
 );
 
 // Servir les fichiers statiques
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, '../public')));
 
 // Telegram bot
 let bot: TelegramBot;
