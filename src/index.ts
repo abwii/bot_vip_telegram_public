@@ -153,6 +153,9 @@ function setupWebhooks() {
   // PayPal webhooks
   app.post('/webhooks/paypal', async (req: Request, res: Response) => {
   try {
+    logger.info({ eventType: req.body?.event_type }, 'PayPal webhook received');
+    logger.info({ body: req.body }, 'PayPal webhook body');
+
     const isValid = await paypalService.verifyWebhook(req.headers, JSON.stringify(req.body));
 
     if (!isValid) {
@@ -161,12 +164,12 @@ function setupWebhooks() {
     }
 
     const event = req.body;
-    logger.info('PayPal webhook received:', event.event_type);
+    logger.info({ eventType: event.event_type }, 'PayPal webhook validated successfully');
 
     // Traiter les différents types d'événements
     switch (event.event_type) {
       case 'PAYMENT.CAPTURE.COMPLETED':
-        await handlePayPalPaymentCompleted(event);
+        await handlePayPalPaymentCompletedWithErrorHandling(event);
         break;
 
       case 'BILLING.SUBSCRIPTION.ACTIVATED':
@@ -280,11 +283,18 @@ app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (r
 
 // Handlers pour PayPal
 async function handlePayPalPaymentCompleted(event: any): Promise<void> {
-  const customId = event.resource?.purchase_units?.[0]?.custom_id;
-  if (!customId) return;
+  logger.info('Processing PayPal payment completion');
 
+  const customId = event.resource?.purchase_units?.[0]?.custom_id;
+  if (!customId) {
+    logger.warn('No custom_id found in PayPal payment event');
+    return;
+  }
+
+  logger.info({ customId }, 'Custom ID found');
   const metadata = JSON.parse(customId);
   const { telegramId, plan } = metadata;
+  logger.info({ telegramId, plan }, 'Processing payment');
 
   // Créer le paiement
   const payment = new Payment({
@@ -325,11 +335,19 @@ async function handlePayPalPaymentCompleted(event: any): Promise<void> {
 
   await subscription.save();
 
-  logger.info(`VIP access granted to user ${telegramId} via PayPal`);
+  logger.info({ telegramId, plan }, '✅ VIP access granted via PayPal - Payment saved, subscription created');
+}
+
+async function handlePayPalPaymentCompletedWithErrorHandling(event: any): Promise<void> {
+  try {
+    await handlePayPalPaymentCompleted(event);
+  } catch (error) {
+    logger.error({ error, event }, 'Error processing PayPal payment completion');
+  }
 }
 
 async function handlePayPalSubscriptionActivated(event: any): Promise<void> {
-  logger.info('PayPal subscription activated:', event.resource?.id);
+  logger.info({ subscriptionId: event.resource?.id }, 'PayPal subscription activated');
 }
 
 async function handlePayPalSubscriptionCancelled(event: any): Promise<void> {
