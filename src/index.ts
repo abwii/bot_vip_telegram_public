@@ -75,6 +75,76 @@ function setupBasicRoutes() {
       res.status(500).json({ error: 'Error fetching pricing' });
     }
   });
+
+  // PayPal success/cancel redirects (ne nécessitent pas de sessions)
+  app.get('/payments/paypal/success', (_req: Request, res: Response) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Paiement réussi</title>
+        <meta charset="UTF-8">
+      </head>
+      <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h1>✅ Paiement réussi !</h1>
+        <p>Votre accès VIP sera activé dans quelques instants.</p>
+        <p>Vous pouvez fermer cette page et retourner sur Telegram.</p>
+      </body>
+      </html>
+    `);
+  });
+
+  app.get('/payments/paypal/cancel', (_req: Request, res: Response) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Paiement annulé</title>
+        <meta charset="UTF-8">
+      </head>
+      <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h1>❌ Paiement annulé</h1>
+        <p>Votre paiement a été annulé.</p>
+        <p>Vous pouvez fermer cette page et retourner sur Telegram pour réessayer.</p>
+      </body>
+      </html>
+    `);
+  });
+
+  // Stripe success/cancel redirects (ne nécessitent pas de sessions)
+  app.get('/payments/stripe/success', (_req: Request, res: Response) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Paiement réussi</title>
+        <meta charset="UTF-8">
+      </head>
+      <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h1>✅ Paiement réussi !</h1>
+        <p>Votre accès VIP sera activé dans quelques instants.</p>
+        <p>Vous pouvez fermer cette page et retourner sur Telegram.</p>
+      </body>
+      </html>
+    `);
+  });
+
+  app.get('/payments/stripe/cancel', (_req: Request, res: Response) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Paiement annulé</title>
+        <meta charset="UTF-8">
+      </head>
+      <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h1>❌ Paiement annulé</h1>
+        <p>Votre paiement a été annulé.</p>
+        <p>Vous pouvez fermer cette page et retourner sur Telegram pour réessayer.</p>
+      </body>
+      </html>
+    `);
+  });
 }
 
 // Configuration des webhooks (ne nécessitent pas de sessions)
@@ -205,41 +275,7 @@ app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (r
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
-
-// PayPal success/cancel redirects
-app.get('/payments/paypal/success', (_req: Request, res: Response) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Paiement réussi</title>
-      <meta charset="UTF-8">
-    </head>
-    <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-      <h1>✅ Paiement réussi !</h1>
-      <p>Votre accès VIP sera activé dans quelques instants.</p>
-      <p>Vous pouvez fermer cette page et retourner sur Telegram.</p>
-    </body>
-    </html>
-  `);
-});
-
-app.get('/payments/paypal/cancel', (_req: Request, res: Response) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Paiement annulé</title>
-      <meta charset="UTF-8">
-    </head>
-    <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-      <h1>❌ Paiement annulé</h1>
-      <p>Votre paiement a été annulé.</p>
-      <p>Vous pouvez fermer cette page et retourner sur Telegram pour réessayer.</p>
-    </body>
-    </html>
-  `);
-});
+}
 
 // Handlers pour PayPal
 async function handlePayPalPaymentCompleted(event: any): Promise<void> {
@@ -427,42 +463,6 @@ async function handleStripeChargeRefunded(event: any): Promise<void> {
   );
 
   logger.info('Stripe charge refunded:', charge.id);
-}
-
-// Stripe success/cancel redirects
-app.get('/payments/stripe/success', (_req: Request, res: Response) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Paiement réussi</title>
-      <meta charset="UTF-8">
-    </head>
-    <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-      <h1>✅ Paiement réussi !</h1>
-      <p>Votre accès VIP sera activé dans quelques instants.</p>
-      <p>Vous pouvez fermer cette page et retourner sur Telegram.</p>
-    </body>
-    </html>
-  `);
-});
-
-app.get('/payments/stripe/cancel', (_req: Request, res: Response) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Paiement annulé</title>
-      <meta charset="UTF-8">
-    </head>
-    <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-      <h1>❌ Paiement annulé</h1>
-      <p>Votre paiement a été annulé.</p>
-      <p>Vous pouvez fermer cette page et retourner sur Telegram pour réessayer.</p>
-    </body>
-    </html>
-  `);
-});
 }
 
 // Fonction principale
