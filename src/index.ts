@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import pino from 'pino';
 import path from 'path';
 import session from 'express-session';
+import MongoStore from 'connect-mongo';
 import cookieParser from 'cookie-parser';
 import { config } from './config';
 import { TelegramBot } from './telegram/bot';
@@ -34,18 +35,6 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(
-  session({
-    secret: config.session.secret,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === 'production',
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 heures
-    },
-  })
-);
 
 // Servir les fichiers statiques
 app.use(express.static(path.join(__dirname, '../public')));
@@ -481,6 +470,26 @@ async function main(): Promise<void> {
     logger.info('Connecting to MongoDB...');
     await mongoose.connect(config.database.mongoUri);
     logger.info('Connected to MongoDB');
+
+    // Configurer les sessions avec MongoDB store (après la connexion MongoDB)
+    app.use(
+      session({
+        secret: config.session.secret,
+        resave: false,
+        saveUninitialized: false,
+        store: MongoStore.create({
+          client: mongoose.connection.getClient(),
+          collectionName: 'sessions',
+          ttl: 24 * 60 * 60, // 24 heures en secondes
+        }),
+        cookie: {
+          secure: process.env.NODE_ENV === 'production',
+          httpOnly: true,
+          maxAge: 24 * 60 * 60 * 1000, // 24 heures en millisecondes
+        },
+      })
+    );
+    logger.info('Session store configured with MongoDB');
 
     // Démarrer le bot Telegram
     logger.info('Starting Telegram bot...');

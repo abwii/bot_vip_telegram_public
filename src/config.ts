@@ -41,6 +41,10 @@ function getEnvVar(key: string, defaultValue?: string): string {
   return value;
 }
 
+function getOptionalEnvVar(key: string, defaultValue: string = ''): string {
+  return process.env[key] || defaultValue;
+}
+
 export const config: Config = {
   telegram: {
     token: getEnvVar('TELEGRAM_TOKEN'),
@@ -57,17 +61,17 @@ export const config: Config = {
     secret: getEnvVar('SESSION_SECRET', 'your-secret-key-change-this-in-production'),
   },
   paypal: {
-    clientId: getEnvVar('PAYPAL_CLIENT_ID'),
-    clientSecret: getEnvVar('PAYPAL_CLIENT_SECRET'),
-    webhookId: getEnvVar('PAYPAL_WEBHOOK_ID'),
-    mode: (getEnvVar('PAYPAL_MODE', 'sandbox') as 'sandbox' | 'live'),
+    clientId: getOptionalEnvVar('PAYPAL_CLIENT_ID'),
+    clientSecret: getOptionalEnvVar('PAYPAL_CLIENT_SECRET'),
+    webhookId: getOptionalEnvVar('PAYPAL_WEBHOOK_ID'),
+    mode: (getOptionalEnvVar('PAYPAL_MODE', 'sandbox') as 'sandbox' | 'live'),
   },
   revolut: {
-    apiKey: getEnvVar('REVOLUT_API_KEY'),
-    webhookSecret: getEnvVar('REVOLUT_WEBHOOK_SECRET'),
+    apiKey: getOptionalEnvVar('REVOLUT_API_KEY'),
+    webhookSecret: getOptionalEnvVar('REVOLUT_WEBHOOK_SECRET'),
   },
   stripe: {
-    secretKey: getEnvVar('STRIPE_SECRET_KEY'),
-    webhookSecret: getEnvVar('STRIPE_WEBHOOK_SECRET'),
+    secretKey: getOptionalEnvVar('STRIPE_SECRET_KEY'),
+    webhookSecret: getOptionalEnvVar('STRIPE_WEBHOOK_SECRET'),
   },
 };
