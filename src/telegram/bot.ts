@@ -259,7 +259,7 @@ export class TelegramBot {
         '/help - Cette aide\n\n' +
         'Moyens de paiement :\n' +
         paymentMethods + '\n\n' +
-        '❓ Besoin d\'aide ? Contactez @support'
+        '❓ Besoin d\'aide ? Contactez @abwi_pv'
       );
     });
 
@@ -403,7 +403,7 @@ export class TelegramBot {
         '/help - Cette aide\n\n' +
         '💳 Moyens de paiement :\n' +
         paymentMethods + '\n\n' +
-        '❓ Besoin d\'aide ? Contactez @support'
+        '❓ Besoin d\'aide ? Contactez @abwi_pv'
       );
     });
 
