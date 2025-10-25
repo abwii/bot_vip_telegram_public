@@ -32,48 +32,52 @@ export const logger = pino({
 
 // Express app
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-
-// Servir les fichiers statiques
-app.use(express.static(path.join(__dirname, '../public')));
 
 // Telegram bot
 let bot: TelegramBot;
 
-// Middleware de logging
-app.use((req: Request, _res: Response, next: NextFunction) => {
-  logger.info(`${req.method} ${req.path}`);
-  next();
-});
+// Configuration des routes de base (avant les routes admin qui nécessitent les sessions)
+function setupBasicRoutes() {
+  // Basic middleware
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
 
-// Root route - serve index.html
-app.get('/', (_req: Request, res: Response) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'));
-});
+  // Servir les fichiers statiques
+  app.use(express.static(path.join(__dirname, '../public')));
 
-// Health check
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+  // Middleware de logging
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    logger.info(`${req.method} ${req.path}`);
+    next();
+  });
 
-// Public API - Get pricing (no authentication required)
-app.get('/api/pricing', async (_req: Request, res: Response) => {
-  try {
-    const prices = await PricingConfig.find({ provider: 'all' }).sort({ plan: 1 });
-    res.json(prices);
-  } catch (error) {
-    logger.error({ error }, 'Error fetching public pricing');
-    res.status(500).json({ error: 'Error fetching pricing' });
-  }
-});
+  // Root route - serve index.html
+  app.get('/', (_req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, '../public/index.html'));
+  });
 
-// Admin routes
-app.use('/admin', adminRoutes);
+  // Health check
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
 
-// PayPal webhooks
-app.post('/webhooks/paypal', async (req: Request, res: Response) => {
+  // Public API - Get pricing (no authentication required)
+  app.get('/api/pricing', async (_req: Request, res: Response) => {
+    try {
+      const prices = await PricingConfig.find({ provider: 'all' }).sort({ plan: 1 });
+      res.json(prices);
+    } catch (error) {
+      logger.error({ error }, 'Error fetching public pricing');
+      res.status(500).json({ error: 'Error fetching pricing' });
+    }
+  });
+}
+
+// Configuration des webhooks (ne nécessitent pas de sessions)
+function setupWebhooks() {
+  // PayPal webhooks
+  app.post('/webhooks/paypal', async (req: Request, res: Response) => {
   try {
     const isValid = await paypalService.verifyWebhook(req.headers, JSON.stringify(req.body));
 
@@ -456,16 +460,14 @@ app.get('/payments/stripe/cancel', (_req: Request, res: Response) => {
     </html>
   `);
 });
-
-// Gestionnaire d'erreurs global
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  logger.error({ error: err }, 'Express error');
-  res.status(500).json({ error: 'Internal server error' });
-});
+}
 
 // Fonction principale
 async function main(): Promise<void> {
   try {
+    // Setup des routes de base avant la connexion MongoDB
+    setupBasicRoutes();
+
     // Connexion à MongoDB
     logger.info('Connecting to MongoDB...');
     await mongoose.connect(config.database.mongoUri);
@@ -490,6 +492,19 @@ async function main(): Promise<void> {
       })
     );
     logger.info('Session store configured with MongoDB');
+
+    // Setup des webhooks (après les sessions)
+    setupWebhooks();
+
+    // Monter les routes admin (après les sessions)
+    app.use('/admin', adminRoutes);
+    logger.info('Admin routes mounted');
+
+    // Gestionnaire d'erreurs global (à la fin)
+    app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+      logger.error({ error: err }, 'Express error');
+      res.status(500).json({ error: 'Internal server error' });
+    });
 
     // Démarrer le bot Telegram
     logger.info('Starting Telegram bot...');
