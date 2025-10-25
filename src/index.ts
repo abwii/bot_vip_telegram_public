@@ -38,6 +38,9 @@ let bot: TelegramBot;
 
 // Configuration des routes de base (avant les routes admin qui nécessitent les sessions)
 function setupBasicRoutes() {
+  // Trust proxy - important pour Railway et autres services derrière un reverse proxy
+  app.set('trust proxy', 1);
+
   // Basic middleware
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
