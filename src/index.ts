@@ -77,8 +77,20 @@ function setupBasicRoutes() {
   });
 
   // PayPal success/cancel redirects (ne nécessitent pas de sessions)
-  app.get('/payments/paypal/success', (_req: Request, res: Response) => {
+  app.get('/payments/paypal/success', async (req: Request, res: Response) => {
     logger.info('PayPal success page accessed');
+
+    const token = req.query.token as string;
+
+    if (token) {
+      logger.info({ token }, 'Processing PayPal payment from success page');
+
+      // Traiter le paiement en arrière-plan (ne pas bloquer la réponse)
+      processPayPalPayment(token).catch(error => {
+        logger.error({ error, token }, 'Failed to process PayPal payment from success page');
+      });
+    }
+
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -279,6 +291,85 @@ app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (r
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+}
+
+// Process PayPal payment from success page (fallback when webhook fails)
+async function processPayPalPayment(orderId: string): Promise<void> {
+  try {
+    logger.info({ orderId }, 'Fetching PayPal order details');
+
+    const orderDetails = await paypalService.getOrderDetails(orderId);
+    logger.info({ orderDetails }, 'PayPal order details retrieved');
+
+    // Vérifier le statut
+    if (orderDetails.status !== 'APPROVED' && orderDetails.status !== 'COMPLETED') {
+      logger.warn({ orderId, status: orderDetails.status }, 'PayPal order not approved/completed');
+      return;
+    }
+
+    // Extraire les métadonnées
+    const customId = orderDetails.purchase_units?.[0]?.custom_id;
+    if (!customId) {
+      logger.warn({ orderId }, 'No custom_id found in PayPal order');
+      return;
+    }
+
+    const metadata = JSON.parse(customId);
+    const { telegramId, plan } = metadata;
+
+    // Vérifier si le paiement a déjà été traité
+    const existingPayment = await Payment.findOne({ externalPaymentId: orderId });
+    if (existingPayment) {
+      logger.info({ orderId, telegramId }, 'PayPal payment already processed, skipping');
+      return;
+    }
+
+    logger.info({ telegramId, plan, orderId }, 'Processing new PayPal payment');
+
+    // Créer le paiement
+    const payment = new Payment({
+      telegramId,
+      provider: 'paypal',
+      externalPaymentId: orderId,
+      amount: parseFloat(orderDetails.purchase_units[0].amount.value),
+      currency: orderDetails.purchase_units[0].amount.currency_code,
+      status: 'completed',
+      metadata,
+    });
+
+    const user = await User.findOne({ telegramId });
+    if (user) {
+      payment.userId = user._id as any;
+    }
+
+    await payment.save();
+
+    // Créer l'abonnement et accorder l'accès VIP
+    const durations = { monthly: 30, quarterly: 90, yearly: 365 };
+    await bot.vipManager.grantVipAccess(telegramId, durations[plan as keyof typeof durations]);
+
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + durations[plan as keyof typeof durations]);
+
+    const subscription = new Subscription({
+      userId: user?._id,
+      telegramId,
+      plan,
+      status: 'active',
+      startDate,
+      endDate,
+      paymentProvider: 'paypal',
+      externalSubscriptionId: orderId,
+    });
+
+    await subscription.save();
+
+    logger.info({ telegramId, plan, orderId }, '✅ VIP access granted via PayPal success page');
+  } catch (error) {
+    logger.error({ error, orderId }, 'Error processing PayPal payment from success page');
+    throw error;
+  }
 }
 
 // Handlers pour PayPal
