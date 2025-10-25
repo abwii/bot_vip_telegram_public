@@ -51,7 +51,7 @@ function setupBasicRoutes() {
 
   // Middleware de logging
   app.use((req: Request, _res: Response, next: NextFunction) => {
-    logger.info(`${req.method} ${req.path}`);
+    logger.info(`${req.method} ${req.path} - Query: ${JSON.stringify(req.query)}`);
     next();
   });
 
@@ -78,6 +78,7 @@ function setupBasicRoutes() {
 
   // PayPal success/cancel redirects (ne nécessitent pas de sessions)
   app.get('/payments/paypal/success', (_req: Request, res: Response) => {
+    logger.info('PayPal success page accessed');
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -470,6 +471,7 @@ async function main(): Promise<void> {
   try {
     // Setup des routes de base avant la connexion MongoDB
     setupBasicRoutes();
+    logger.info('Basic routes configured including payment confirmation pages');
 
     // Connexion à MongoDB
     logger.info('Connecting to MongoDB...');
