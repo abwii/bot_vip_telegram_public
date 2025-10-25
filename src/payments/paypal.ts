@@ -102,6 +102,28 @@ export class PayPalService {
     return await response.json() as PayPalOrderResponse;
   }
 
+  async getOrderDetails(orderId: string): Promise<any> {
+    const token = await this.getAccessToken();
+
+    const response = await fetch(
+      `${PAYPAL_API_BASE}/v2/checkout/orders/${orderId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`PayPal get order details failed: ${error}`);
+    }
+
+    return await response.json();
+  }
+
   async captureOrder(orderId: string): Promise<unknown> {
     const token = await this.getAccessToken();
 
