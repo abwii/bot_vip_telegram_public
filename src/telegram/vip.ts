@@ -1,5 +1,6 @@
 import { Telegraf } from 'telegraf';
 import { User, IUser } from '../models/User';
+import { InviteLink } from '../models/InviteLink';
 // import { Subscription, ISubscription } from '../models/Subscription';
 import { config } from '../config';
 import { logger } from '../index';
@@ -106,14 +107,26 @@ export class VipManager {
 
   async inviteToVipChat(telegramId: number): Promise<void> {
     try {
+      // Révoquer tous les liens d'invitation actifs de cet utilisateur
+      await this.revokeInviteLinks(telegramId);
+
       // Créer un lien d'invitation
+      const expirationTime = Math.floor(Date.now() / 1000) + 3600; // Expire dans 1 heure
       const inviteLink = await this.bot.telegram.createChatInviteLink(
         config.telegram.vipChatId,
         {
           member_limit: 1,
-          expire_date: Math.floor(Date.now() / 1000) + 3600, // Expire dans 1 heure
+          expire_date: expirationTime,
         }
       );
+
+      // Stocker le lien en base de données
+      await InviteLink.create({
+        telegramId,
+        inviteLink: inviteLink.invite_link,
+        expiresAt: new Date(expirationTime * 1000),
+        isRevoked: false,
+      });
 
       // Rendre le chat VIP en lecture seule
       await this.bot.telegram.setChatPermissions(config.telegram.vipChatId, {
@@ -134,7 +147,7 @@ export class VipManager {
 
       await this.bot.telegram.sendMessage(
         telegramId,
-        `🔗 Voici votre invitation VIP :\n${inviteLink.invite_link}\n\nCe lien expire dans 1 heure.`
+        `🔗 Voici votre invitation VIP :\n${inviteLink.invite_link}\n\n⚠️ Ce lien expire dans 1 heure et ne fonctionne qu'avec un statut VIP actif.`
       );
     } catch (error) {
       logger.error({ error }, `Failed to create invite link for user ${telegramId}`);
@@ -144,6 +157,9 @@ export class VipManager {
 
   async removeFromVipChat(telegramId: number): Promise<void> {
     try {
+      // Révoquer tous les liens d'invitation actifs
+      await this.revokeInviteLinks(telegramId);
+
       // Vérifier d'abord si l'utilisateur est membre du chat
       try {
         const member = await this.bot.telegram.getChatMember(
@@ -218,6 +234,73 @@ export class VipManager {
       } catch (error) {
         logger.error({ error }, `Failed to notify user ${user.telegramId}`);
       }
+    }
+  }
+
+  /**
+   * Révoquer tous les liens d'invitation actifs d'un utilisateur
+   */
+  async revokeInviteLinks(telegramId: number): Promise<void> {
+    try {
+      const activeLinks = await InviteLink.find({
+        telegramId,
+        isRevoked: false,
+        expiresAt: { $gt: new Date() },
+      });
+
+      for (const link of activeLinks) {
+        try {
+          // Révoquer le lien sur Telegram
+          await this.bot.telegram.revokeChatInviteLink(
+            config.telegram.vipChatId,
+            link.inviteLink
+          );
+
+          // Marquer comme révoqué en base de données
+          link.isRevoked = true;
+          await link.save();
+
+          logger.info(`Revoked invite link for user ${telegramId}`);
+        } catch (error) {
+          logger.error({ error }, `Failed to revoke invite link ${link.inviteLink}`);
+          // Continuer même si la révocation échoue (lien peut-être déjà expiré)
+        }
+      }
+    } catch (error) {
+      logger.error({ error }, `Failed to revoke invite links for user ${telegramId}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Vérifier si un utilisateur a le droit d'utiliser un lien d'invitation
+   */
+  async canUseInviteLink(telegramId: number, inviteLink: string): Promise<boolean> {
+    try {
+      // Vérifier que l'utilisateur est VIP
+      const isVip = await this.checkVipStatus(telegramId);
+      if (!isVip) {
+        logger.warn(`User ${telegramId} tried to use invite link but is not VIP`);
+        return false;
+      }
+
+      // Vérifier que le lien existe et n'est pas révoqué
+      const link = await InviteLink.findOne({
+        inviteLink,
+        telegramId,
+        isRevoked: false,
+        expiresAt: { $gt: new Date() },
+      });
+
+      if (!link) {
+        logger.warn(`User ${telegramId} tried to use invalid/revoked invite link`);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      logger.error({ error }, `Error checking invite link for user ${telegramId}`);
+      return false;
     }
   }
 }

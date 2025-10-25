@@ -20,6 +20,7 @@ export class TelegramBot {
     this.vipManager = new VipManager(this.bot);
     this.setupCommands();
     this.setupHandlers();
+    this.setupChatMemberHandlers();
   }
 
   // Helper method to get enabled payment providers
@@ -661,6 +662,64 @@ export class TelegramBot {
     this.bot.catch((err, ctx) => {
       logger.error({ error: err }, 'Bot error');
       ctx.reply('❌ Une erreur s\'est produite. Veuillez réessayer plus tard.');
+    });
+  }
+
+  private setupChatMemberHandlers(): void {
+    // Handler pour surveiller les changements de membres dans le groupe VIP
+    this.bot.on('chat_member', async (ctx) => {
+      try {
+        const chatId = ctx.chat.id.toString();
+        const update = ctx.chatMember;
+
+        // Vérifier que c'est le groupe VIP
+        if (chatId !== config.telegram.vipChatId) {
+          return;
+        }
+
+        const userId = update.new_chat_member.user.id;
+        const newStatus = update.new_chat_member.status;
+        const oldStatus = update.old_chat_member.status;
+
+        // Détecter quand quelqu'un rejoint le groupe
+        if (
+          (oldStatus === 'left' || oldStatus === 'kicked') &&
+          (newStatus === 'member' || newStatus === 'restricted')
+        ) {
+          logger.info(`User ${userId} is joining VIP chat, checking VIP status...`);
+
+          // Vérifier le statut VIP
+          const isVip = await this.vipManager.checkVipStatus(userId);
+
+          if (!isVip) {
+            logger.warn(`Non-VIP user ${userId} tried to join VIP chat, removing...`);
+
+            // Bannir immédiatement
+            await this.bot.telegram.banChatMember(chatId, userId);
+
+            // Débanner pour permettre une future inscription
+            await this.bot.telegram.unbanChatMember(chatId, userId);
+
+            // Notifier l'utilisateur
+            try {
+              await this.bot.telegram.sendMessage(
+                userId,
+                '❌ Vous ne pouvez pas rejoindre le groupe VIP sans statut VIP actif.\n\n' +
+                'Votre lien d\'invitation a expiré ou votre statut VIP a été révoqué.\n\n' +
+                'Utilisez /subscribe pour vous abonner.'
+              );
+            } catch (error) {
+              logger.error({ error }, `Failed to notify user ${userId} about VIP requirement`);
+            }
+
+            logger.info(`Non-VIP user ${userId} removed from VIP chat`);
+          } else {
+            logger.info(`VIP user ${userId} successfully joined VIP chat`);
+          }
+        }
+      } catch (error) {
+        logger.error({ error }, 'Error in chat_member handler');
+      }
     });
   }
 
