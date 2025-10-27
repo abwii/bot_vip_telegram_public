@@ -186,6 +186,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Admin - Dashboard</title>
+      <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
       <style>
         * {
           margin: 0;
@@ -449,6 +450,109 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
         .btn-danger:hover {
           background: #c82333;
         }
+        .tabs {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 30px;
+          border-bottom: 2px solid #e9ecef;
+        }
+        .tab {
+          padding: 12px 24px;
+          background: transparent;
+          border: none;
+          border-bottom: 3px solid transparent;
+          cursor: pointer;
+          font-size: 16px;
+          font-weight: 600;
+          color: #666;
+          transition: all 0.3s;
+        }
+        .tab:hover {
+          color: #667eea;
+        }
+        .tab.active {
+          color: #667eea;
+          border-bottom-color: #667eea;
+        }
+        .tab-content {
+          display: none;
+        }
+        .tab-content.active {
+          display: block;
+        }
+        .charts-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+          gap: 30px;
+          margin-bottom: 40px;
+        }
+        .chart-card {
+          background: white;
+          padding: 25px;
+          border-radius: 10px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .chart-card h3 {
+          margin-bottom: 20px;
+          color: #333;
+          font-size: 18px;
+        }
+        .chart-container {
+          position: relative;
+          height: 300px;
+        }
+        .export-section {
+          background: white;
+          padding: 30px;
+          border-radius: 10px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+          margin-bottom: 20px;
+        }
+        .export-controls {
+          display: flex;
+          gap: 15px;
+          align-items: center;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+        }
+        .export-controls label {
+          font-weight: 600;
+          color: #333;
+        }
+        .export-controls select {
+          padding: 10px;
+          border: 1px solid #ddd;
+          border-radius: 5px;
+          font-size: 14px;
+        }
+        .export-buttons {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .export-btn {
+          padding: 12px 24px;
+          background: #10b981;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+          transition: background 0.3s;
+        }
+        .export-btn:hover {
+          background: #059669;
+        }
+        .export-btn:disabled {
+          background: #ccc;
+          cursor: not-allowed;
+        }
+        @media (max-width: 768px) {
+          .charts-grid {
+            grid-template-columns: 1fr;
+          }
+        }
       </style>
     </head>
     <body>
@@ -461,6 +565,15 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
       </div>
 
       <div class="container">
+        <!-- Navigation par onglets -->
+        <div class="tabs">
+          <button class="tab active" onclick="switchTab('dashboard')">📊 Tableau de bord</button>
+          <button class="tab" onclick="switchTab('charts')">📈 Graphiques</button>
+          <button class="tab" onclick="switchTab('exports')">📥 Exports CSV</button>
+        </div>
+
+        <!-- Onglet Tableau de bord -->
+        <div id="dashboard-tab" class="tab-content active">
         <!-- Statistiques -->
         <div class="stats">
           <div class="stat-card">
@@ -550,6 +663,101 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             <div class="loading">Chargement...</div>
           </div>
         </div>
+        </div>
+        <!-- Fin Onglet Tableau de bord -->
+
+        <!-- Onglet Graphiques -->
+        <div id="charts-tab" class="tab-content">
+          <div class="charts-grid">
+            <div class="chart-card">
+              <h3>📊 Évolution des Revenus (12 derniers mois)</h3>
+              <div class="chart-container">
+                <canvas id="revenueChart"></canvas>
+              </div>
+            </div>
+
+            <div class="chart-card">
+              <h3>👥 Croissance des Utilisateurs (12 derniers mois)</h3>
+              <div class="chart-container">
+                <canvas id="usersChart"></canvas>
+              </div>
+            </div>
+
+            <div class="chart-card">
+              <h3>📝 Distribution des Plans d'Abonnement</h3>
+              <div class="chart-container">
+                <canvas id="plansChart"></canvas>
+              </div>
+            </div>
+
+            <div class="chart-card">
+              <h3>💳 Répartition des Paiements par Provider</h3>
+              <div class="chart-container">
+                <canvas id="providersChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Fin Onglet Graphiques -->
+
+        <!-- Onglet Exports CSV -->
+        <div id="exports-tab" class="tab-content">
+          <div class="export-section">
+            <h2>📥 Exporter les données en CSV</h2>
+            <p style="margin-bottom: 20px; color: #666;">
+              Sélectionnez un mois et une année pour filtrer les exports, ou laissez vide pour exporter toutes les données.
+            </p>
+
+            <div class="export-controls">
+              <label for="exportMonth">Mois :</label>
+              <select id="exportMonth">
+                <option value="">Tous</option>
+                <option value="1">Janvier</option>
+                <option value="2">Février</option>
+                <option value="3">Mars</option>
+                <option value="4">Avril</option>
+                <option value="5">Mai</option>
+                <option value="6">Juin</option>
+                <option value="7">Juillet</option>
+                <option value="8">Août</option>
+                <option value="9">Septembre</option>
+                <option value="10">Octobre</option>
+                <option value="11">Novembre</option>
+                <option value="12">Décembre</option>
+              </select>
+
+              <label for="exportYear">Année :</label>
+              <select id="exportYear">
+                <option value="">Toutes</option>
+              </select>
+            </div>
+
+            <div class="export-buttons">
+              <button class="export-btn" onclick="exportData('users')">
+                📥 Exporter Utilisateurs
+              </button>
+              <button class="export-btn" onclick="exportData('payments')">
+                📥 Exporter Paiements
+              </button>
+              <button class="export-btn" onclick="exportData('subscriptions')">
+                📥 Exporter Abonnements
+              </button>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 5px;">
+              <h3 style="margin-bottom: 10px; color: #333;">ℹ️ Informations sur les exports</h3>
+              <ul style="color: #666; line-height: 1.8;">
+                <li><strong>Utilisateurs :</strong> Telegram ID, Nom, Username, Statut VIP, VIP jusqu'à, Date de création</li>
+                <li><strong>Paiements :</strong> Telegram ID, Nom complet, Username, Montant, Devise, Provider, Statut, Date</li>
+                <li><strong>Abonnements :</strong> Telegram ID, Plan, Statut, Dates début/fin, Provider, Auto-renouvellement, Date de création</li>
+              </ul>
+              <p style="margin-top: 15px; color: #999; font-size: 14px;">
+                Les fichiers CSV sont encodés en UTF-8 avec BOM pour une compatibilité optimale avec Excel.
+              </p>
+            </div>
+          </div>
+        </div>
+        <!-- Fin Onglet Exports CSV -->
       </div>
 
       <!-- Modal pour éditer un abonnement -->
@@ -1325,6 +1533,305 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
 
         // Rafraîchir les stats toutes les 5 minutes
         setInterval(loadStats, 300000);
+
+        // ==================== Gestion des Onglets ====================
+
+        function switchTab(tabName) {
+          // Masquer tous les onglets
+          document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.classList.remove('active');
+          });
+
+          // Masquer tous les boutons d'onglets actifs
+          document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+          });
+
+          // Afficher l'onglet sélectionné
+          document.getElementById(tabName + '-tab').classList.add('active');
+
+          // Activer le bouton d'onglet correspondant
+          event.target.classList.add('active');
+
+          // Charger les graphiques si on est sur l'onglet graphiques
+          if (tabName === 'charts') {
+            loadCharts();
+          }
+
+          // Initialiser les années si on est sur l'onglet exports
+          if (tabName === 'exports') {
+            initializeYearSelector();
+          }
+        }
+
+        // ==================== Graphiques Chart.js ====================
+
+        let charts = {};
+
+        async function loadCharts() {
+          // Éviter de recharger les graphiques s'ils existent déjà
+          if (Object.keys(charts).length > 0) return;
+
+          try {
+            // Charger les données des graphiques en parallèle
+            const [revenueData, usersData, plansData, providersData] = await Promise.all([
+              fetch('/admin/api/charts/revenue').then(r => r.json()),
+              fetch('/admin/api/charts/users').then(r => r.json()),
+              fetch('/admin/api/charts/plans').then(r => r.json()),
+              fetch('/admin/api/charts/providers-stats').then(r => r.json())
+            ]);
+
+            // Graphique des revenus
+            createRevenueChart(revenueData);
+
+            // Graphique des utilisateurs
+            createUsersChart(usersData);
+
+            // Graphique de distribution des plans
+            createPlansChart(plansData);
+
+            // Graphique des providers
+            createProvidersChart(providersData);
+
+          } catch (error) {
+            console.error('Erreur lors du chargement des graphiques:', error);
+          }
+        }
+
+        function createRevenueChart(data) {
+          const ctx = document.getElementById('revenueChart');
+          if (!ctx) return;
+
+          // Créer les labels et données
+          const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+          const labels = [];
+          const amounts = [];
+
+          // Remplir les données
+          data.forEach(item => {
+            labels.push(\`\${monthNames[item._id.month - 1]} \${item._id.year}\`);
+            amounts.push(item.total.toFixed(2));
+          });
+
+          charts.revenue = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Revenus (€)',
+                data: amounts,
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                tension: 0.4,
+                fill: true
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  position: 'top'
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    callback: function(value) {
+                      return value + '€';
+                    }
+                  }
+                }
+              }
+            }
+          });
+        }
+
+        function createUsersChart(data) {
+          const ctx = document.getElementById('usersChart');
+          if (!ctx) return;
+
+          const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+          const labels = [];
+          const totalUsers = [];
+          const vipUsers = [];
+
+          data.forEach(item => {
+            labels.push(\`\${monthNames[item._id.month - 1]} \${item._id.year}\`);
+            totalUsers.push(item.total);
+            vipUsers.push(item.vip);
+          });
+
+          charts.users = new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  label: 'Total Utilisateurs',
+                  data: totalUsers,
+                  borderColor: '#667eea',
+                  backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                  tension: 0.4
+                },
+                {
+                  label: 'Utilisateurs VIP',
+                  data: vipUsers,
+                  borderColor: '#10b981',
+                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                  tension: 0.4
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  position: 'top'
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true
+                }
+              }
+            }
+          });
+        }
+
+        function createPlansChart(data) {
+          const ctx = document.getElementById('plansChart');
+          if (!ctx) return;
+
+          const planLabels = {
+            monthly: 'Mensuel',
+            quarterly: 'Trimestriel',
+            yearly: 'Annuel'
+          };
+
+          const labels = [];
+          const counts = [];
+          const colors = ['#667eea', '#10b981', '#f59e0b'];
+
+          data.forEach(item => {
+            labels.push(planLabels[item._id] || item._id);
+            counts.push(item.count);
+          });
+
+          charts.plans = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+              labels: labels,
+              datasets: [{
+                data: counts,
+                backgroundColor: colors,
+                borderWidth: 2,
+                borderColor: '#fff'
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  position: 'bottom'
+                }
+              }
+            }
+          });
+        }
+
+        function createProvidersChart(data) {
+          const ctx = document.getElementById('providersChart');
+          if (!ctx) return;
+
+          const providerLabels = {
+            paypal: 'PayPal',
+            revolut: 'Revolut',
+            stripe: 'Stripe'
+          };
+
+          const labels = [];
+          const counts = [];
+          const colors = ['#0088cc', '#667eea', '#635bff'];
+
+          data.forEach(item => {
+            labels.push(providerLabels[item._id] || item._id);
+            counts.push(item.count);
+          });
+
+          charts.providers = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Nombre de paiements',
+                data: counts,
+                backgroundColor: colors
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: false
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  ticks: {
+                    stepSize: 1
+                  }
+                }
+              }
+            }
+          });
+        }
+
+        // ==================== Export CSV ====================
+
+        function initializeYearSelector() {
+          const yearSelect = document.getElementById('exportYear');
+          if (!yearSelect || yearSelect.options.length > 1) return;
+
+          const currentYear = new Date().getFullYear();
+          for (let year = currentYear; year >= currentYear - 5; year--) {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearSelect.appendChild(option);
+          }
+        }
+
+        async function exportData(type) {
+          const month = document.getElementById('exportMonth').value;
+          const year = document.getElementById('exportYear').value;
+
+          let url = \`/admin/api/export/\${type}\`;
+          const params = [];
+
+          if (month) params.push(\`month=\${month}\`);
+          if (year) params.push(\`year=\${year}\`);
+
+          if (params.length > 0) {
+            url += '?' + params.join('&');
+          }
+
+          try {
+            // Ouvrir l'URL dans un nouvel onglet pour télécharger le fichier
+            window.open(url, '_blank');
+          } catch (error) {
+            console.error('Erreur lors de l\\'export:', error);
+            alert('Erreur lors de l\\'export des données');
+          }
+        }
       </script>
     </body>
     </html>
@@ -1785,6 +2292,245 @@ router.post('/api/pricing/init', requireAuth, async (_req: Request, res: Respons
     res.json(prices);
   } catch (error) {
     logger.error({ error }, 'Error initializing pricing');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== Chart Data Routes ====================
+
+// Get revenue data for charts (last 12 months)
+router.get('/api/charts/revenue', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    const revenueData = await Payment.aggregate([
+      {
+        $match: {
+          status: 'completed',
+          createdAt: { $gte: twelveMonthsAgo },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+          },
+          total: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1 },
+      },
+    ]);
+
+    res.json(revenueData);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching revenue chart data');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Get user growth data for charts (last 12 months)
+router.get('/api/charts/users', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    const userData = await User.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: twelveMonthsAgo },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+          },
+          total: { $sum: 1 },
+          vip: {
+            $sum: { $cond: ['$isVip', 1, 0] },
+          },
+        },
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1 },
+      },
+    ]);
+
+    res.json(userData);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching user chart data');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Get plan distribution data
+router.get('/api/charts/plans', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const planData = await Subscription.aggregate([
+      {
+        $match: {
+          status: 'active',
+        },
+      },
+      {
+        $group: {
+          _id: '$plan',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    res.json(planData);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching plan chart data');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Get payment provider distribution data
+router.get('/api/charts/providers-stats', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const providerData = await Payment.aggregate([
+      {
+        $match: {
+          status: 'completed',
+        },
+      },
+      {
+        $group: {
+          _id: '$provider',
+          count: { $sum: 1 },
+          total: { $sum: '$amount' },
+        },
+      },
+    ]);
+
+    res.json(providerData);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching provider chart data');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== CSV Export Routes ====================
+
+// Export users to CSV
+router.get('/api/export/users', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { month, year } = req.query;
+    const query: any = {};
+
+    if (month && year) {
+      const startDate = new Date(Number(year), Number(month) - 1, 1);
+      const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
+      query.createdAt = { $gte: startDate, $lte: endDate };
+    }
+
+    const users = await User.find(query).sort({ createdAt: -1 }).lean();
+
+    // Generate CSV
+    let csv = 'Telegram ID,Prénom,Nom,Username,Statut VIP,VIP jusqu\'à,Date de création\n';
+
+    users.forEach(user => {
+      const vipStatus = user.isVip ? 'VIP' : 'Non-VIP';
+      const vipUntil = user.vipUntil ? new Date(user.vipUntil).toLocaleDateString('fr-FR') : '-';
+      const createdAt = new Date(user.createdAt).toLocaleDateString('fr-FR');
+
+      csv += `${user.telegramId},"${user.firstName || ''}","${user.lastName || ''}","${user.username || ''}",${vipStatus},${vipUntil},${createdAt}\n`;
+    });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=users_${year || 'all'}_${month || 'all'}.csv`);
+    res.send('\ufeff' + csv); // BOM for Excel UTF-8 support
+  } catch (error) {
+    logger.error({ error }, 'Error exporting users to CSV');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Export payments to CSV
+router.get('/api/export/payments', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { month, year } = req.query;
+    const query: any = {};
+
+    if (month && year) {
+      const startDate = new Date(Number(year), Number(month) - 1, 1);
+      const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
+      query.createdAt = { $gte: startDate, $lte: endDate };
+    }
+
+    const payments = await Payment.find(query)
+      .populate('userId', 'firstName lastName username')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Generate CSV
+    let csv = 'Telegram ID,Nom complet,Username,Montant,Devise,Provider,Statut,Date\n';
+
+    payments.forEach(payment => {
+      const userName = payment.userId
+        ? `${(payment.userId as any).firstName || ''} ${(payment.userId as any).lastName || ''}`.trim()
+        : 'N/A';
+      const username = payment.userId ? (payment.userId as any).username || 'N/A' : 'N/A';
+      const date = new Date(payment.createdAt).toLocaleDateString('fr-FR');
+
+      csv += `${payment.telegramId},"${userName}","${username}",${payment.amount},${payment.currency},${payment.provider},${payment.status},${date}\n`;
+    });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=payments_${year || 'all'}_${month || 'all'}.csv`);
+    res.send('\ufeff' + csv); // BOM for Excel UTF-8 support
+  } catch (error) {
+    logger.error({ error }, 'Error exporting payments to CSV');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Export subscriptions to CSV
+router.get('/api/export/subscriptions', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { month, year } = req.query;
+    const query: any = {};
+
+    if (month && year) {
+      const startDate = new Date(Number(year), Number(month) - 1, 1);
+      const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
+      query.createdAt = { $gte: startDate, $lte: endDate };
+    }
+
+    const subscriptions = await Subscription.find(query).sort({ createdAt: -1 }).lean();
+
+    // Generate CSV
+    let csv = 'Telegram ID,Plan,Statut,Date de début,Date de fin,Provider,Auto-renouvellement,Date de création\n';
+
+    subscriptions.forEach(sub => {
+      const planLabels: any = {
+        monthly: 'Mensuel',
+        quarterly: 'Trimestriel',
+        yearly: 'Annuel'
+      };
+
+      const plan = planLabels[sub.plan] || sub.plan;
+      const startDate = new Date(sub.startDate).toLocaleDateString('fr-FR');
+      const endDate = new Date(sub.endDate).toLocaleDateString('fr-FR');
+      const createdAt = new Date(sub.createdAt).toLocaleDateString('fr-FR');
+      const autoRenew = sub.autoRenew ? 'Oui' : 'Non';
+
+      csv += `${sub.telegramId},${plan},${sub.status},${startDate},${endDate},${sub.paymentProvider},${autoRenew},${createdAt}\n`;
+    });
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=subscriptions_${year || 'all'}_${month || 'all'}.csv`);
+    res.send('\ufeff' + csv); // BOM for Excel UTF-8 support
+  } catch (error) {
+    logger.error({ error }, 'Error exporting subscriptions to CSV');
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
