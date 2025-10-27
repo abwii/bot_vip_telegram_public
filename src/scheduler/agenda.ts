@@ -85,6 +85,57 @@ export class SchedulerService {
       }
     });
 
+    // Job pour scanner tous les membres du groupe VIP et expulser les non-VIP
+    this.agenda.define('scan-vip-group-members', async (_job: any) => {
+      logger.info('Running VIP group members scan');
+
+      try {
+        if (!this.vipManager) {
+          logger.warn('VipManager not set, skipping VIP group scan');
+          return;
+        }
+
+        // Récupérer tous les utilisateurs qui ne sont plus VIP
+        const nonVipUsers = await User.find({
+          isVip: false,
+        });
+
+        let removedCount = 0;
+
+        for (const user of nonVipUsers) {
+          try {
+            // Vérifier si l'utilisateur est dans le groupe VIP
+            const chatMember = await this.vipManager.getChatMember(user.telegramId);
+
+            if (chatMember && (chatMember.status === 'member' || chatMember.status === 'restricted')) {
+              logger.warn(`Non-VIP user ${user.telegramId} found in VIP group, removing...`);
+
+              // Expulser l'utilisateur
+              await this.vipManager.removeFromVipChat(user.telegramId);
+              removedCount++;
+
+              // Notifier l'utilisateur
+              try {
+                await this.vipManager.notifyVipRemoval(user.telegramId);
+              } catch (error) {
+                logger.error({ error }, `Failed to notify user ${user.telegramId} about removal`);
+              }
+            }
+          } catch (error: any) {
+            // Ignorer les erreurs "user not found" (c'est normal s'il n'est pas dans le groupe)
+            if (error.response?.error_code !== 400) {
+              logger.error({ error }, `Error checking user ${user.telegramId} in VIP group`);
+            }
+          }
+        }
+
+        logger.info(`VIP group scan completed: removed ${removedCount} non-VIP members`);
+      } catch (error) {
+        logger.error({ error }, 'Error scanning VIP group members');
+        throw error;
+      }
+    });
+
     // Job pour nettoyer les anciennes données
     this.agenda.define('cleanup-old-data', async (_job: any) => {
       logger.info('Running data cleanup');
@@ -182,7 +233,8 @@ export class SchedulerService {
     await this.agenda.start();
 
     // Planifier les jobs récurrents
-    await this.agenda.every('5 minutes', 'check-vip-expiration');
+    await this.agenda.every('5 minute', 'check-vip-expiration');
+    await this.agenda.every('5 minute', 'scan-vip-group-members');
     await this.agenda.every('1 hour', 'notify-expiring-vip');
     await this.agenda.every('1 day', 'cleanup-old-data');
     await this.agenda.every('1 day', 'daily-statistics', {}, { timezone: 'Europe/Paris' });

@@ -1323,8 +1323,8 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
         loadPricing();
         loadProviders();
 
-        // Rafraîchir les stats toutes les 30 secondes
-        setInterval(loadStats, 30000);
+        // Rafraîchir les stats toutes les 5 minutes
+        setInterval(loadStats, 300000);
       </script>
     </body>
     </html>
