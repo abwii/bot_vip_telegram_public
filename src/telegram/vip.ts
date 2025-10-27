@@ -303,4 +303,32 @@ export class VipManager {
       return false;
     }
   }
+
+  /**
+   * Récupérer les informations d'un membre du groupe VIP
+   */
+  async getChatMember(telegramId: number): Promise<any> {
+    try {
+      return await this.bot.telegram.getChatMember(config.telegram.vipChatId, telegramId);
+    } catch (error) {
+      logger.debug({ error }, `Failed to get chat member ${telegramId}`);
+      return null;
+    }
+  }
+
+  /**
+   * Notifier un utilisateur qu'il a été retiré du groupe VIP
+   */
+  async notifyVipRemoval(telegramId: number): Promise<void> {
+    try {
+      await this.bot.telegram.sendMessage(
+        telegramId,
+        '❌ Vous avez été retiré du groupe VIP car votre statut VIP a expiré ou été révoqué.\n\n' +
+        'Utilisez /subscribe pour vous réabonner et rejoindre à nouveau le groupe VIP.'
+      );
+    } catch (error) {
+      logger.error({ error }, `Failed to send removal notification to user ${telegramId}`);
+      throw error;
+    }
+  }
 }
