@@ -49,9 +49,11 @@ function setupBasicRoutes() {
   // Servir les fichiers statiques
   app.use(express.static(path.join(__dirname, '../public')));
 
-  // Middleware de logging
+  // Middleware de logging (exclure les routes admin API pour réduire le bruit)
   app.use((req: Request, _res: Response, next: NextFunction) => {
-    logger.info(`${req.method} ${req.path} - Query: ${JSON.stringify(req.query)}`);
+    if (!req.path.startsWith('/admin/api/')) {
+      logger.info(`${req.method} ${req.path} - Query: ${JSON.stringify(req.query)}`);
+    }
     next();
   });
 
