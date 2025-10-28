@@ -187,37 +187,79 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Admin - Dashboard</title>
       <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-      <style>
+        <style>
+        :root {
+          --bg-primary: #f5f5f5;
+          --bg-secondary: #ffffff;
+          --text-primary: #333;
+          --text-secondary: #666;
+          --text-tertiary: #999;
+          --border-color: #e9ecef;
+          --shadow: rgba(0,0,0,0.05);
+          --shadow-medium: rgba(0,0,0,0.1);
+          --shadow-heavy: rgba(0,0,0,0.2);
+          --header-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          --hover-bg: #f8f9fa;
+        }
+
+        body.dark-mode {
+          --bg-primary: #1a1a1a;
+          --bg-secondary: #2d2d2d;
+          --text-primary: #e0e0e0;
+          --text-secondary: #b0b0b0;
+          --text-tertiary: #808080;
+          --border-color: #404040;
+          --shadow: rgba(0,0,0,0.3);
+          --shadow-medium: rgba(0,0,0,0.4);
+          --shadow-heavy: rgba(0,0,0,0.5);
+          --header-bg: linear-gradient(135deg, #4a5fc1 0%, #5c3a7a 100%);
+          --hover-bg: #3a3a3a;
+        }
+
+        /* Reset et Base */
         * {
           margin: 0;
           padding: 0;
           box-sizing: border-box;
         }
+
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-          background: #f5f5f5;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          transition: background-color 0.3s ease, color 0.3s ease;
         }
+
+        /* Header */
         .header {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: var(--header-bg);
           color: white;
           padding: 20px 40px;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          box-shadow: 0 2px 10px var(--shadow-medium);
+          transition: background 0.3s ease;
         }
+
         .header h1 {
           font-size: 24px;
+          font-weight: 600;
         }
+
         .header-right {
           display: flex;
           gap: 20px;
           align-items: center;
         }
+
         .username {
           font-weight: 500;
+          font-size: 14px;
         }
-        .logout-btn {
+
+        .logout-btn,
+        .dark-mode-btn {
           background: rgba(255,255,255,0.2);
           color: white;
           border: none;
@@ -225,66 +267,176 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           border-radius: 5px;
           cursor: pointer;
           font-size: 14px;
-          transition: background 0.3s;
+          font-weight: 500;
+          transition: background 0.3s ease, transform 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
-        .logout-btn:hover {
+
+        .logout-btn:hover,
+        .dark-mode-btn:hover {
           background: rgba(255,255,255,0.3);
+          transform: translateY(-1px);
         }
+
+        .logout-btn:active,
+        .dark-mode-btn:active {
+          transform: translateY(0);
+        }
+
+        .dark-mode-btn::before {
+          content: '🌙';
+          font-size: 16px;
+        }
+
+        body.dark-mode .dark-mode-btn::before {
+          content: '☀️';
+        }
+
+        /* Container */
         .container {
           max-width: 1400px;
           margin: 0 auto;
           padding: 40px 20px;
         }
+
+        /* Tabs Navigation */
+        .tabs {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 30px;
+          border-bottom: 2px solid var(--border-color);
+          transition: border-color 0.3s ease;
+        }
+
+        .tab {
+          padding: 12px 24px;
+          background: transparent;
+          border: none;
+          border-bottom: 3px solid transparent;
+          cursor: pointer;
+          font-size: 16px;
+          font-weight: 600;
+          color: var(--text-secondary);
+          transition: all 0.3s ease;
+        }
+
+        .tab:hover {
+          color: #667eea;
+        }
+
+        .tab.active {
+          color: #667eea;
+          border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+          display: none;
+          animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+          display: block;
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        /* Stats Grid */
         .stats {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
           gap: 20px;
           margin-bottom: 40px;
         }
+
         .stat-card {
-          background: white;
+          background: var(--bg-secondary);
           padding: 25px;
           border-radius: 10px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+          box-shadow: 0 2px 10px var(--shadow);
+          transition: all 0.3s ease;
         }
-        .stat-card h3 {
-          color: #666;
-          font-size: 14px;
-          font-weight: 500;
-          margin-bottom: 10px;
+
+        .stat-card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 4px 20px var(--shadow-medium);
         }
-        .stat-card .value {
-          color: #333;
-          font-size: 32px;
-          font-weight: 700;
-        }
+
         .stat-card .icon {
           font-size: 24px;
           margin-bottom: 10px;
         }
+
+        .stat-card h3 {
+          color: var(--text-secondary);
+          font-size: 14px;
+          font-weight: 500;
+          margin-bottom: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .stat-card .value {
+          color: var(--text-primary);
+          font-size: 32px;
+          font-weight: 700;
+          transition: color 0.3s ease;
+        }
+
+        /* Section */
         .section {
-          background: white;
+          background: var(--bg-secondary);
           border-radius: 10px;
           padding: 30px;
           margin-bottom: 20px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+          box-shadow: 0 2px 10px var(--shadow);
+          transition: all 0.3s ease;
         }
+
         .section h2 {
           margin-bottom: 20px;
-          color: #333;
+          color: var(--text-primary);
+          font-size: 20px;
+          font-weight: 600;
+          transition: color 0.3s ease;
         }
+
+        /* Filters */
         .filters {
           display: flex;
           gap: 15px;
           margin-bottom: 20px;
           flex-wrap: wrap;
         }
-        .filters input, .filters select {
-          padding: 10px;
-          border: 1px solid #ddd;
+
+        .filters input,
+        .filters select {
+          padding: 10px 15px;
+          border: 1px solid var(--border-color);
           border-radius: 5px;
           font-size: 14px;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          transition: all 0.3s ease;
         }
+
+        .filters input:focus,
+        .filters select:focus {
+          outline: none;
+          border-color: #667eea;
+          box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
         .filters button {
           padding: 10px 20px;
           background: #667eea;
@@ -293,59 +445,132 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           border-radius: 5px;
           cursor: pointer;
           font-size: 14px;
+          font-weight: 600;
+          transition: all 0.3s ease;
         }
+
+        .filters button:hover {
+          background: #5568d3;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .filters button:active {
+          transform: translateY(0);
+        }
+
+        /* Tables */
         table {
           width: 100%;
           border-collapse: collapse;
+          background: var(--bg-secondary);
+          transition: background-color 0.3s ease;
         }
+
         th {
-          background: #f8f9fa;
-          padding: 12px;
+          background: var(--bg-primary);
+          padding: 12px 15px;
           text-align: left;
           font-weight: 600;
-          color: #333;
-          border-bottom: 2px solid #e9ecef;
+          color: var(--text-primary);
+          border-bottom: 2px solid var(--border-color);
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          transition: all 0.3s ease;
         }
+
         td {
-          padding: 12px;
-          border-bottom: 1px solid #e9ecef;
+          padding: 12px 15px;
+          border-bottom: 1px solid var(--border-color);
+          color: var(--text-primary);
+          font-size: 14px;
+          transition: all 0.3s ease;
         }
+
         tr:hover {
-          background: #f8f9fa;
+          background: var(--hover-bg);
         }
+
+        tr:last-child td {
+          border-bottom: none;
+        }
+
+        /* Badges */
         .badge {
           display: inline-block;
           padding: 4px 12px;
           border-radius: 12px;
           font-size: 12px;
           font-weight: 600;
+          transition: all 0.3s ease;
         }
+
         .badge-success {
           background: #d4edda;
           color: #155724;
         }
+
         .badge-danger {
           background: #f8d7da;
           color: #721c24;
         }
+
         .badge-warning {
           background: #fff3cd;
           color: #856404;
         }
+
         .badge-info {
           background: #d1ecf1;
           color: #0c5460;
         }
-        .loading {
-          text-align: center;
-          padding: 40px;
-          color: #666;
+
+        body.dark-mode .badge-success {
+          background: #1e4620;
+          color: #4ade80;
         }
+
+        body.dark-mode .badge-danger {
+          background: #4a1515;
+          color: #f87171;
+        }
+
+        body.dark-mode .badge-warning {
+          background: #4a3a15;
+          color: #fbbf24;
+        }
+
+        body.dark-mode .badge-info {
+          background: #15324a;
+          color: #60a5fa;
+        }
+
+        /* Loading & Empty States */
+        .loading,
         .empty {
           text-align: center;
           padding: 40px;
-          color: #999;
+          color: var(--text-tertiary);
+          font-size: 14px;
+          transition: color 0.3s ease;
         }
+
+        .loading::before {
+          content: '⏳';
+          font-size: 24px;
+          display: block;
+          margin-bottom: 10px;
+        }
+
+        .empty::before {
+          content: '📭';
+          font-size: 24px;
+          display: block;
+          margin-bottom: 10px;
+        }
+
+        /* Action Buttons */
         .action-btn {
           background: transparent;
           border: 1px solid #667eea;
@@ -354,20 +579,54 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           border-radius: 4px;
           cursor: pointer;
           font-size: 12px;
+          font-weight: 600;
           margin-right: 5px;
+          transition: all 0.3s ease;
         }
+
         .action-btn:hover {
           background: #667eea;
           color: white;
+          transform: translateY(-2px);
+          box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
         }
+
+        .action-btn:active {
+          transform: translateY(0);
+        }
+
         .action-btn-danger {
           border-color: #dc3545;
           color: #dc3545;
         }
+
         .action-btn-danger:hover {
           background: #dc3545;
           color: white;
+          box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
         }
+
+        body.dark-mode .action-btn {
+          border-color: #667eea;
+          color: #667eea;
+        }
+
+        body.dark-mode .action-btn:hover {
+          background: #667eea;
+          color: white;
+        }
+
+        body.dark-mode .action-btn-danger {
+          border-color: #dc3545;
+          color: #dc3545;
+        }
+
+        body.dark-mode .action-btn-danger:hover {
+          background: #dc3545;
+          color: white;
+        }
+
+        /* Modal */
         .modal {
           display: none;
           position: fixed;
@@ -379,135 +638,196 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           background: rgba(0,0,0,0.5);
           align-items: center;
           justify-content: center;
+          transition: background 0.3s ease;
         }
+
+        body.dark-mode .modal {
+          background: rgba(0,0,0,0.85);
+        }
+
         .modal.show {
           display: flex;
+          animation: fadeIn 0.3s ease;
         }
+
         .modal-content {
-          background: white;
+          background: var(--bg-secondary);
           border-radius: 10px;
           padding: 30px;
           max-width: 500px;
           width: 90%;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+          box-shadow: 0 10px 40px var(--shadow-heavy);
+          transition: all 0.3s ease;
+          animation: slideUp 0.3s ease;
         }
+
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
         .modal-header {
           margin-bottom: 20px;
         }
+
         .modal-header h3 {
           margin: 0;
-          color: #333;
+          color: var(--text-primary);
+          font-size: 20px;
+          font-weight: 600;
+          transition: color 0.3s ease;
         }
+
         .modal-body {
           margin-bottom: 20px;
         }
+
         .modal-body .form-group {
           margin-bottom: 15px;
         }
+
         .modal-body label {
           display: block;
           margin-bottom: 5px;
           font-weight: 600;
-          color: #333;
+          color: var(--text-primary);
+          font-size: 14px;
+          transition: color 0.3s ease;
         }
-        .modal-body input, .modal-body select {
+
+        .modal-body input,
+        .modal-body select {
           width: 100%;
-          padding: 10px;
-          border: 1px solid #ddd;
+          padding: 10px 15px;
+          border: 1px solid var(--border-color);
           border-radius: 5px;
           font-size: 14px;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          transition: all 0.3s ease;
         }
+
+        .modal-body input:focus,
+        .modal-body select:focus {
+          outline: none;
+          border-color: #667eea;
+          box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
         .modal-footer {
           display: flex;
           gap: 10px;
           justify-content: flex-end;
         }
+
         .modal-footer button {
           padding: 10px 20px;
           border: none;
           border-radius: 5px;
           cursor: pointer;
           font-size: 14px;
+          font-weight: 600;
+          transition: all 0.3s ease;
         }
+
         .btn-primary {
           background: #667eea;
           color: white;
         }
+
         .btn-primary:hover {
           background: #5568d3;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
         }
+
+        .btn-primary:active {
+          transform: translateY(0);
+        }
+
         .btn-secondary {
           background: #6c757d;
           color: white;
         }
+
         .btn-secondary:hover {
           background: #5a6268;
+          transform: translateY(-2px);
         }
+
+        .btn-secondary:active {
+          transform: translateY(0);
+        }
+
         .btn-danger {
           background: #dc3545;
           color: white;
         }
+
         .btn-danger:hover {
           background: #c82333;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
         }
-        .tabs {
-          display: flex;
-          gap: 10px;
-          margin-bottom: 30px;
-          border-bottom: 2px solid #e9ecef;
+
+        .btn-danger:active {
+          transform: translateY(0);
         }
-        .tab {
-          padding: 12px 24px;
-          background: transparent;
-          border: none;
-          border-bottom: 3px solid transparent;
-          cursor: pointer;
-          font-size: 16px;
-          font-weight: 600;
-          color: #666;
-          transition: all 0.3s;
-        }
-        .tab:hover {
-          color: #667eea;
-        }
-        .tab.active {
-          color: #667eea;
-          border-bottom-color: #667eea;
-        }
-        .tab-content {
-          display: none;
-        }
-        .tab-content.active {
-          display: block;
-        }
+
+        /* Charts */
         .charts-grid {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
           gap: 30px;
           margin-bottom: 40px;
         }
+
         .chart-card {
-          background: white;
+          background: var(--bg-secondary);
           padding: 25px;
           border-radius: 10px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+          box-shadow: 0 2px 10px var(--shadow);
+          transition: all 0.3s ease;
         }
+
+        .chart-card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 4px 20px var(--shadow-medium);
+        }
+
         .chart-card h3 {
           margin-bottom: 20px;
-          color: #333;
+          color: var(--text-primary);
           font-size: 18px;
+          font-weight: 600;
+          transition: color 0.3s ease;
         }
+
         .chart-container {
           position: relative;
           height: 300px;
         }
+
+        body.dark-mode canvas {
+          filter: brightness(0.95);
+        }
+
+        /* Export Section */
         .export-section {
-          background: white;
+          background: var(--bg-secondary);
           padding: 30px;
           border-radius: 10px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+          box-shadow: 0 2px 10px var(--shadow);
           margin-bottom: 20px;
+          transition: all 0.3s ease;
         }
+
         .export-controls {
           display: flex;
           gap: 15px;
@@ -515,21 +835,36 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           margin-bottom: 20px;
           flex-wrap: wrap;
         }
+
         .export-controls label {
           font-weight: 600;
-          color: #333;
+          color: var(--text-primary);
+          font-size: 14px;
+          transition: color 0.3s ease;
         }
+
         .export-controls select {
-          padding: 10px;
-          border: 1px solid #ddd;
+          padding: 10px 15px;
+          border: 1px solid var(--border-color);
           border-radius: 5px;
           font-size: 14px;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          transition: all 0.3s ease;
         }
+
+        .export-controls select:focus {
+          outline: none;
+          border-color: #667eea;
+          box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
         .export-buttons {
           display: flex;
           gap: 10px;
           flex-wrap: wrap;
         }
+
         .export-btn {
           padding: 12px 24px;
           background: #10b981;
@@ -539,19 +874,361 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           cursor: pointer;
           font-size: 14px;
           font-weight: 600;
-          transition: background 0.3s;
+          transition: all 0.3s ease;
         }
+
         .export-btn:hover {
           background: #059669;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
         }
+
+        .export-btn:active {
+          transform: translateY(0);
+        }
+
         .export-btn:disabled {
           background: #ccc;
           cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
         }
-        @media (max-width: 768px) {
+
+        body.dark-mode .export-section ul {
+          color: var(--text-secondary);
+        }
+
+        body.dark-mode .export-section p {
+          color: var(--text-tertiary);
+        }
+
+        body.dark-mode .export-section h3 {
+          color: var(--text-primary);
+        }
+
+        /* Status classes */
+        .status-active {
+          color: #10b981;
+          font-weight: 600;
+        }
+
+        .status-expired {
+          color: #dc3545;
+          font-weight: 600;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
           .charts-grid {
             grid-template-columns: 1fr;
           }
+          
+          .header {
+            padding: 15px 20px;
+          }
+          
+          .header h1 {
+            font-size: 20px;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .stats {
+            grid-template-columns: 1fr;
+          }
+          
+          .header-right {
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-end;
+          }
+          
+          .tabs {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+          
+          .tab {
+            white-space: nowrap;
+          }
+          
+          .filters {
+            flex-direction: column;
+          }
+          
+          .filters input,
+          .filters select,
+          .filters button {
+            width: 100%;
+          }
+          
+          .export-controls {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          
+          .export-controls select {
+            width: 100%;
+          }
+          
+          .export-buttons {
+            width: 100%;
+          }
+          
+          .export-btn {
+            flex: 1;
+          }
+          
+          table {
+            font-size: 12px;
+          }
+          
+          th, td {
+            padding: 8px 10px;
+          }
+          
+          .action-btn {
+            padding: 3px 8px;
+            font-size: 11px;
+          }
+          
+          .modal-content {
+            width: 95%;
+            padding: 20px;
+          }
+          
+          .container {
+            padding: 20px 10px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .header {
+            flex-direction: column;
+            gap: 15px;
+            text-align: center;
+          }
+          
+          .header-right {
+            width: 100%;
+            justify-content: center;
+            align-items: center;
+          }
+          
+          .stat-card {
+            padding: 20px;
+          }
+          
+          .stat-card .value {
+            font-size: 28px;
+          }
+          
+          .section {
+            padding: 20px;
+          }
+          
+          table {
+            display: block;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+        }
+
+        /* Animations supplémentaires */
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
+        }
+
+        .loading::before {
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        /* Scrollbar personnalisée */
+        ::-webkit-scrollbar {
+          width: 10px;
+          height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+          background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+          background: var(--border-color);
+          border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+          background: var(--text-tertiary);
+        }
+
+        body.dark-mode ::-webkit-scrollbar-thumb {
+          background: #404040;
+        }
+
+        body.dark-mode ::-webkit-scrollbar-thumb:hover {
+          background: #505050;
+        }
+
+        /* Print styles */
+        @media print {
+          .header,
+          .filters,
+          .action-btn,
+          .tabs,
+          .export-section,
+          .logout-btn,
+          .dark-mode-btn {
+            display: none !important;
+          }
+          
+          body {
+            background: white;
+            color: black;
+          }
+          
+          .stat-card,
+          .section,
+          .chart-card {
+            box-shadow: none;
+            border: 1px solid #ddd;
+          }
+        }
+
+        /* Focus visible pour accessibilité */
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible {
+          outline: 2px solid #667eea;
+          outline-offset: 2px;
+        }
+
+        /* Hint text */
+        .hint {
+          text-align: center;
+          margin-top: 15px;
+          font-size: 12px;
+          color: var(--text-tertiary);
+          transition: color 0.3s ease;
+        }
+
+        /* Info box dans export section */
+        .export-section > div:last-child {
+          margin-top: 30px;
+          padding: 20px;
+          background: var(--bg-primary);
+          border-radius: 5px;
+          transition: background-color 0.3s ease;
+        }
+
+        .export-section > div:last-child h3 {
+          margin-bottom: 10px;
+          color: var(--text-primary);
+          font-size: 16px;
+        }
+
+        .export-section > div:last-child ul {
+          color: var(--text-secondary);
+          line-height: 1.8;
+          list-style-position: inside;
+        }
+
+        .export-section > div:last-child p {
+          margin-top: 15px;
+          color: var(--text-tertiary);
+          font-size: 14px;
+        }
+
+        /* Smooth scrolling */
+        html {
+          scroll-behavior: smooth;
+        }
+
+        /* Selection color */
+        ::selection {
+          background: #667eea;
+          color: white;
+        }
+
+        ::-moz-selection {
+          background: #667eea;
+          color: white;
+        }
+
+                /* Export Info Box */
+        .export-info-box {
+          margin-top: 30px;
+          padding: 20px;
+          background: var(--bg-primary);
+          border-radius: 5px;
+          border: 1px solid var(--border-color);
+          transition: all 0.3s ease;
+        }
+
+        .export-info-box h3 {
+          margin-bottom: 10px;
+          color: var(--text-primary);
+          font-size: 16px;
+          font-weight: 600;
+          transition: color 0.3s ease;
+        }
+
+        .export-info-box ul {
+          color: var(--text-secondary);
+          line-height: 1.8;
+          list-style-position: inside;
+          margin: 0;
+          padding: 0;
+          transition: color 0.3s ease;
+        }
+
+        .export-info-box ul li {
+          margin-bottom: 8px;
+        }
+
+        .export-info-box ul li:last-child {
+          margin-bottom: 0;
+        }
+
+        .export-info-box ul strong {
+          color: var(--text-primary);
+          font-weight: 600;
+        }
+
+        .export-info-note {
+          margin-top: 15px;
+          margin-bottom: 0;
+          color: var(--text-tertiary);
+          font-size: 14px;
+          font-style: italic;
+          transition: color 0.3s ease;
+        }
+
+        /* Styles spécifiques dark mode */
+        body.dark-mode .export-info-box {
+          background: #242424;
+          border-color: #404040;
+        }
+
+        body.dark-mode .export-info-box h3 {
+          color: #e0e0e0;
+        }
+
+        body.dark-mode .export-info-box ul {
+          color: #b0b0b0;
+        }
+
+        body.dark-mode .export-info-box ul strong {
+          color: #e0e0e0;
+        }
+
+        body.dark-mode .export-info-note {
+          color: #808080;
         }
       </style>
     </head>
@@ -561,6 +1238,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
         <div class="header-right">
           <span class="username">👤 ${req.session.username || 'Admin'}</span>
           <button class="logout-btn" onclick="logout()">Déconnexion</button>
+          <button class="dark-mode-btn" onclick="toggleDarkMode()">Mode Sombre</button>
         </div>
       </div>
 
@@ -744,14 +1422,14 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
               </button>
             </div>
 
-            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 5px;">
-              <h3 style="margin-bottom: 10px; color: #333;">ℹ️ Informations sur les exports</h3>
-              <ul style="color: #666; line-height: 1.8;">
+            <div class="export-info-box">
+              <h3>ℹ️ Informations sur les exports</h3>
+              <ul>
                 <li><strong>Utilisateurs :</strong> Telegram ID, Nom, Username, Statut VIP, VIP jusqu'à, Date de création</li>
                 <li><strong>Paiements :</strong> Telegram ID, Nom complet, Username, Montant, Devise, Provider, Statut, Date</li>
                 <li><strong>Abonnements :</strong> Telegram ID, Plan, Statut, Dates début/fin, Provider, Auto-renouvellement, Date de création</li>
               </ul>
-              <p style="margin-top: 15px; color: #999; font-size: 14px;">
+              <p class="export-info-note">
                 Les fichiers CSV sont encodés en UTF-8 avec BOM pour une compatibilité optimale avec Excel.
               </p>
             </div>
@@ -1810,6 +2488,58 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           }
         }
 
+        function toggleDarkMode() {
+          document.body.classList.toggle('dark-mode');
+          
+          // Sauvegarder la préférence dans localStorage
+          const isDarkMode = document.body.classList.contains('dark-mode');
+          localStorage.setItem('darkMode', isDarkMode ? 'enabled' : 'disabled');
+          
+          // Mettre à jour le texte du bouton
+          const btn = document.querySelector('.dark-mode-btn');
+          if (btn) {
+            btn.textContent = isDarkMode ? 'Mode Clair' : 'Mode Sombre';
+          }
+          
+          // Recharger les graphiques pour adapter les couleurs
+          if (Object.keys(charts).length > 0) {
+            reloadChartsForTheme();
+          }
+        }
+
+        // Fonction pour adapter les graphiques au thème
+        function reloadChartsForTheme() {
+          const isDarkMode = document.body.classList.contains('dark-mode');
+          
+          // Couleurs adaptées au thème
+          const gridColor = isDarkMode ? '#404040' : '#e9ecef';
+          const textColor = isDarkMode ? '#b0b0b0' : '#666';
+          
+          // Mettre à jour tous les graphiques existants
+          Object.values(charts).forEach(chart => {
+            if (chart && chart.options) {
+              // Mettre à jour les couleurs des axes
+              if (chart.options.scales) {
+                if (chart.options.scales.y) {
+                  chart.options.scales.y.grid = { color: gridColor };
+                  chart.options.scales.y.ticks = { color: textColor };
+                }
+                if (chart.options.scales.x) {
+                  chart.options.scales.x.grid = { color: gridColor };
+                  chart.options.scales.x.ticks = { color: textColor };
+                }
+              }
+              
+              // Mettre à jour la légende
+              if (chart.options.plugins && chart.options.plugins.legend) {
+                chart.options.plugins.legend.labels = { color: textColor };
+              }
+              
+              chart.update();
+            }
+          });
+        }
+
         async function exportData(type) {
           const month = document.getElementById('exportMonth').value;
           const year = document.getElementById('exportYear').value;
@@ -1832,6 +2562,19 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             alert('Erreur lors de l\\'export des données');
           }
         }
+
+        // Charger la préférence au chargement de la page
+        document.addEventListener('DOMContentLoaded', () => {
+          const darkMode = localStorage.getItem('darkMode');
+          const btn = document.querySelector('.dark-mode-btn');
+          
+          if (darkMode === 'enabled') {
+            document.body.classList.add('dark-mode');
+            if (btn) btn.textContent = 'Mode Clair';
+          } else {
+            if (btn) btn.textContent = 'Mode Sombre';
+          }
+        });
       </script>
     </body>
     </html>
