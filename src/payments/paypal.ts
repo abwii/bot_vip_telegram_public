@@ -215,7 +215,6 @@ export class PayPalService {
         }, 'PayPal API response received');
 
       } catch (fetchErr) {
-        fetchError = fetchErr;
         logger.error({
           errorType: fetchErr instanceof Error ? fetchErr.constructor.name : typeof fetchErr,
           errorMessage: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
