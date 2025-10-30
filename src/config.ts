@@ -75,3 +75,41 @@ export const config: Config = {
     webhookSecret: getOptionalEnvVar('STRIPE_WEBHOOK_SECRET'),
   },
 };
+
+// Validate payment providers configuration
+export function validatePaymentConfig(): { valid: boolean; warnings: string[] } {
+  const warnings: string[] = [];
+
+  // Check PayPal
+  if (config.paypal.clientId && config.paypal.clientSecret) {
+    if (!config.server.baseUrl || config.server.baseUrl === 'http://localhost:3000') {
+      warnings.push('⚠️  PayPal is configured but BASE_URL is localhost - webhooks may not work in production');
+    }
+  } else if (config.paypal.clientId || config.paypal.clientSecret) {
+    warnings.push('⚠️  PayPal is partially configured (missing clientId or clientSecret)');
+  }
+
+  // Check Revolut
+  if (config.revolut.apiKey && !config.revolut.webhookSecret) {
+    warnings.push('⚠️  Revolut API key is set but webhook secret is missing');
+  }
+
+  // Check Stripe
+  if (config.stripe.secretKey && !config.stripe.webhookSecret) {
+    warnings.push('⚠️  Stripe secret key is set but webhook secret is missing');
+  }
+
+  // Check if at least one payment provider is configured
+  const hasPayPal = config.paypal.clientId && config.paypal.clientSecret;
+  const hasRevolut = config.revolut.apiKey;
+  const hasStripe = config.stripe.secretKey;
+
+  if (!hasPayPal && !hasRevolut && !hasStripe) {
+    warnings.push('⚠️  No payment provider is fully configured. Users will not be able to make payments.');
+  }
+
+  return {
+    valid: warnings.length === 0,
+    warnings
+  };
+}

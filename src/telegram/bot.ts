@@ -447,6 +447,13 @@ export class TelegramBot {
       try {
         const amounts = await this.getPrices('paypal');
 
+        logger.info({
+          userId: user.id,
+          username: user.username,
+          plan,
+          amount: amounts[plan]
+        }, 'User initiating PayPal payment');
+
         const order = await paypalService.createOrder(
           amounts[plan],
           'EUR',
@@ -459,21 +466,63 @@ export class TelegramBot {
 
         const approveLink = order.links.find(link => link.rel === 'approve');
 
-        if (approveLink) {
-          await ctx.reply(
-            `✅ Commande créée !\n\n` +
-            `Cliquez sur le lien ci-dessous pour payer :\n` +
-            `${approveLink.href}\n\n` +
-            `Une fois le paiement effectué, votre accès VIP sera activé automatiquement.`,
-            Markup.inlineKeyboard([
-              [Markup.button.url('💳 Payer avec PayPal', approveLink.href)],
-              [Markup.button.callback('❌ Annuler la commande', 'payment_cancel')],
-            ])
-          );
+        if (!approveLink) {
+          logger.error({
+            orderId: order.id,
+            links: order.links
+          }, 'PayPal order created but no approve link found');
+          await ctx.reply('❌ Erreur lors de la création de la commande (pas de lien d\'approbation). Veuillez réessayer.');
+          return;
         }
+
+        logger.info({
+          orderId: order.id,
+          userId: user.id,
+          approveUrl: approveLink.href
+        }, 'PayPal order created and sent to user');
+
+        await ctx.reply(
+          `✅ Commande créée !\n\n` +
+          `Cliquez sur le lien ci-dessous pour payer :\n` +
+          `${approveLink.href}\n\n` +
+          `Une fois le paiement effectué, votre accès VIP sera activé automatiquement.`,
+          Markup.inlineKeyboard([
+            [Markup.button.url('💳 Payer avec PayPal', approveLink.href)],
+            [Markup.button.callback('❌ Annuler la commande', 'payment_cancel')],
+          ])
+        );
       } catch (error) {
-        logger.error({ error }, 'PayPal order creation error');
-        await ctx.reply('❌ Erreur lors de la création de la commande. Veuillez réessayer.');
+        const errorLog: any = {
+          userId: user.id,
+          username: user.username,
+          plan
+        };
+
+        let userMessage = '❌ Erreur lors de la création de la commande. Veuillez réessayer.';
+
+        if (error instanceof Error) {
+          errorLog.errorMessage = error.message;
+          errorLog.errorStack = error.stack;
+          errorLog.errorName = error.name;
+
+          // Messages d'erreur plus spécifiques pour l'utilisateur
+          if (error.message.includes('timeout')) {
+            userMessage = '❌ La demande a pris trop de temps. Vérifiez votre connexion et réessayez.';
+          } else if (error.message.includes('network') || error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
+            userMessage = '❌ Problème de connexion avec PayPal. Veuillez réessayer dans quelques instants.';
+          } else if (error.message.includes('credentials') || error.message.includes('configuration')) {
+            userMessage = '❌ Service de paiement temporairement indisponible. Veuillez contacter le support.';
+          } else if (error.message.includes('401') || error.message.includes('403')) {
+            userMessage = '❌ Problème d\'authentification avec PayPal. Veuillez contacter le support.';
+          } else if (error.message.includes('400')) {
+            userMessage = '❌ Données de commande invalides. Veuillez contacter le support.';
+          }
+        } else {
+          errorLog.errorValue = String(error);
+        }
+
+        logger.error(errorLog, 'PayPal order creation error in bot handler');
+        await ctx.reply(userMessage + '\n\nSi le problème persiste, contactez @abwi_pv');
       }
     });
 

@@ -42,41 +42,118 @@ export class PayPalService {
       return this.accessToken;
     }
 
+    // Vérifier la configuration
+    if (!config.paypal.clientId || !config.paypal.clientSecret) {
+      const error = 'PayPal configuration missing: clientId or clientSecret not set';
+      logger.error(error);
+      throw new Error(error);
+    }
+
+    logger.info('Requesting new PayPal access token...');
+
     const auth = Buffer.from(
       `${config.paypal.clientId}:${config.paypal.clientSecret}`
     ).toString('base64');
 
-    const response = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: 'grant_type=client_credentials',
-    });
+    try {
+      // Ajouter un timeout de 15 secondes pour l'authentification
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`PayPal auth failed: ${error}`);
+      let response;
+      try {
+        response = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: 'grant_type=client_credentials',
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+      } catch (fetchErr: any) {
+        clearTimeout(timeout);
+        if (fetchErr.name === 'AbortError') {
+          logger.error({
+            apiUrl: `${PAYPAL_API_BASE}/v1/oauth2/token`,
+            timeout: 15000
+          }, 'PayPal authentication timeout');
+          throw new Error('PayPal authentication timeout');
+        }
+        logger.error({
+          errorType: fetchErr.constructor.name,
+          errorMessage: fetchErr.message,
+          errorCode: fetchErr.code,
+          apiUrl: `${PAYPAL_API_BASE}/v1/oauth2/token`
+        }, 'PayPal authentication network error');
+        throw new Error(`PayPal authentication network error: ${fetchErr.message}`);
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error({
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          mode: config.paypal.mode,
+          hasClientId: !!config.paypal.clientId,
+          clientIdLength: config.paypal.clientId?.length
+        }, 'PayPal authentication failed');
+        throw new Error(`PayPal auth failed (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json() as PayPalAccessTokenResponse;
+      this.accessToken = data.access_token;
+      this.tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000; // 1 minute de marge
+
+      logger.info('PayPal access token obtained successfully');
+      return this.accessToken;
+    } catch (error) {
+      // Si c'est déjà une erreur que nous avons lancée, la re-throw
+      if (error instanceof Error && error.message.startsWith('PayPal')) {
+        throw error;
+      }
+      // Sinon, logger et wrapper l'erreur
+      logger.error({
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      }, 'Unexpected error during PayPal authentication');
+      throw error;
     }
-
-    const data = await response.json() as PayPalAccessTokenResponse;
-    this.accessToken = data.access_token;
-    this.tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000; // 1 minute de marge
-
-    return this.accessToken;
   }
 
   async createOrder(amount: number, currency: string, metadata: Record<string, unknown>): Promise<PayPalOrderResponse> {
-    const token = await this.getAccessToken();
+    try {
+      logger.info({
+        amount,
+        currency,
+        metadata,
+        baseUrl: config.server.baseUrl,
+        paypalMode: config.paypal.mode,
+        apiBase: PAYPAL_API_BASE
+      }, 'Creating PayPal order...');
 
-    const response = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+      // Vérifier la configuration avant de continuer
+      if (!config.paypal.clientId || !config.paypal.clientSecret) {
+        const error = 'PayPal credentials not configured';
+        logger.error({
+          hasClientId: !!config.paypal.clientId,
+          hasClientSecret: !!config.paypal.clientSecret
+        }, error);
+        throw new Error(error);
+      }
+
+      if (!config.server.baseUrl || config.server.baseUrl === 'http://localhost:3000') {
+        logger.warn({
+          baseUrl: config.server.baseUrl
+        }, 'Warning: Using localhost baseUrl for PayPal callbacks');
+      }
+
+      const token = await this.getAccessToken();
+
+      const orderData = {
         intent: 'CAPTURE',
         purchase_units: [
           {
@@ -91,15 +168,149 @@ export class PayPalService {
           return_url: `${config.server.baseUrl}/payments/paypal/success`,
           cancel_url: `${config.server.baseUrl}/payments/paypal/cancel`,
         },
-      }),
-    });
+      };
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`PayPal order creation failed: ${error}`);
+      logger.debug({ orderData }, 'PayPal order request data');
+
+      let response;
+      let responseText;
+
+      try {
+        // Ajouter un timeout de 30 secondes pour éviter les requêtes qui restent bloquées
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+
+        try {
+          response = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(orderData),
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeout);
+          responseText = await response.text();
+        } catch (fetchErr: any) {
+          clearTimeout(timeout);
+          if (fetchErr.name === 'AbortError') {
+            logger.error({
+              apiUrl: `${PAYPAL_API_BASE}/v2/checkout/orders`,
+              timeout: 30000,
+              amount,
+              currency
+            }, 'PayPal API request timeout after 30 seconds');
+            throw new Error('PayPal API request timeout - La requête a pris trop de temps');
+          }
+          throw fetchErr;
+        }
+
+        logger.debug({
+          status: response.status,
+          statusText: response.statusText,
+          responseHeaders: Object.fromEntries(response.headers.entries()),
+          responseBodyLength: responseText.length
+        }, 'PayPal API response received');
+
+      } catch (fetchErr) {
+        fetchError = fetchErr;
+        logger.error({
+          errorType: fetchErr instanceof Error ? fetchErr.constructor.name : typeof fetchErr,
+          errorMessage: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+          errorStack: fetchErr instanceof Error ? fetchErr.stack : undefined,
+          errorCode: (fetchErr as any)?.code,
+          errorErrno: (fetchErr as any)?.errno,
+          errorSyscall: (fetchErr as any)?.syscall,
+          apiUrl: `${PAYPAL_API_BASE}/v2/checkout/orders`,
+          amount,
+          currency
+        }, 'PayPal API fetch error - Network or connection issue');
+
+        throw new Error(`PayPal API network error: ${fetchErr instanceof Error ? fetchErr.message : 'Unknown error'}`);
+      }
+
+      if (!response.ok) {
+        let errorDetails;
+        try {
+          errorDetails = JSON.parse(responseText);
+        } catch (parseErr) {
+          errorDetails = responseText;
+          logger.warn({
+            parseError: parseErr instanceof Error ? parseErr.message : String(parseErr),
+            rawResponse: responseText.substring(0, 500)
+          }, 'Failed to parse PayPal error response');
+        }
+
+        logger.error({
+          status: response.status,
+          statusText: response.statusText,
+          errorDetails,
+          amount,
+          currency,
+          baseUrl: config.server.baseUrl,
+          mode: config.paypal.mode,
+          apiUrl: `${PAYPAL_API_BASE}/v2/checkout/orders`,
+          requestData: orderData
+        }, 'PayPal order creation failed - API returned error status');
+
+        throw new Error(`PayPal order creation failed (${response.status}): ${JSON.stringify(errorDetails)}`);
+      }
+
+      let orderResponse;
+      try {
+        orderResponse = JSON.parse(responseText) as PayPalOrderResponse;
+      } catch (parseErr) {
+        logger.error({
+          parseError: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          rawResponse: responseText.substring(0, 500)
+        }, 'Failed to parse PayPal success response');
+        throw new Error('Invalid PayPal response format');
+      }
+
+      logger.info({
+        orderId: orderResponse.id,
+        status: orderResponse.status,
+        links: orderResponse.links.map(l => ({ rel: l.rel, method: l.method }))
+      }, 'PayPal order created successfully');
+
+      return orderResponse;
+    } catch (error) {
+      // Sérialisation correcte de tous les types d'erreurs
+      const errorLog: any = {
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        amount,
+        currency,
+        metadata,
+        baseUrl: config.server.baseUrl,
+        paypalMode: config.paypal.mode
+      };
+
+      if (error instanceof Error) {
+        errorLog.errorMessage = error.message;
+        errorLog.errorStack = error.stack;
+        errorLog.errorName = error.name;
+      } else if (typeof error === 'object' && error !== null) {
+        // Pour les erreurs qui ne sont pas des instances d'Error
+        errorLog.errorObject = JSON.stringify(error, Object.getOwnPropertyNames(error));
+      } else {
+        errorLog.errorValue = String(error);
+      }
+
+      // Ajouter les propriétés supplémentaires pour les erreurs système
+      if (error && typeof error === 'object') {
+        const err = error as any;
+        if (err.code) errorLog.errorCode = err.code;
+        if (err.errno) errorLog.errorErrno = err.errno;
+        if (err.syscall) errorLog.errorSyscall = err.syscall;
+        if (err.address) errorLog.errorAddress = err.address;
+        if (err.port) errorLog.errorPort = err.port;
+      }
+
+      logger.error(errorLog, 'PayPal createOrder exception');
+      throw error;
     }
-
-    return await response.json() as PayPalOrderResponse;
   }
 
   async getOrderDetails(orderId: string): Promise<any> {
