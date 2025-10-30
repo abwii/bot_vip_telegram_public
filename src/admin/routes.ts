@@ -5,7 +5,7 @@ import { Subscription } from '../models/Subscription';
 import { Payment } from '../models/Payment';
 import { PricingConfig } from '../models/PricingConfig';
 import { PaymentProvider } from '../models/PaymentProvider';
-import { requireAuth, requireAuthWeb } from '../middleware/auth';
+import { requireAuth, requireAuthWeb, requireSuperAdmin } from '../middleware/auth';
 import { logger } from '../index';
 
 const router: Router = Router();
@@ -1248,6 +1248,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           <button class="tab active" onclick="switchTab('dashboard')">📊 Tableau de bord</button>
           <button class="tab" onclick="switchTab('charts')">📈 Graphiques</button>
           <button class="tab" onclick="switchTab('exports')">📥 Exports CSV</button>
+          ${req.session.role === 'super_admin' ? '<button class="tab" onclick="switchTab(\'admins\')">👥 Gestion Admins</button>' : ''}
         </div>
 
         <!-- Onglet Tableau de bord -->
@@ -1436,6 +1437,42 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           </div>
         </div>
         <!-- Fin Onglet Exports CSV -->
+
+        <!-- Onglet Gestion Admins (Super Admin Only) -->
+        ${req.session.role === 'super_admin' ? `
+        <div id="admins-tab" class="tab-content">
+          <div class="section">
+            <h2>👥 Gestion des Administrateurs</h2>
+            <p style="margin-bottom: 20px; color: var(--text-secondary);">
+              Liste de tous les administrateurs et super administrateurs du système.
+            </p>
+
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Rôle</th>
+                    <th>Statut</th>
+                    <th>Dernière Connexion</th>
+                    <th>Date de Création</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="adminsTableBody">
+                  <tr>
+                    <td colspan="7" style="text-align: center; padding: 40px;">
+                      Chargement...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        ` : ''}
+        <!-- Fin Onglet Gestion Admins -->
       </div>
 
       <!-- Modal pour éditer un abonnement -->
@@ -2240,6 +2277,11 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           if (tabName === 'exports') {
             initializeYearSelector();
           }
+
+          // Charger les admins si on est sur l'onglet admins
+          if (tabName === 'admins') {
+            loadAdmins();
+          }
         }
 
         // ==================== Graphiques Chart.js ====================
@@ -2563,11 +2605,114 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           }
         }
 
+        // ==================== Admin Management Functions ====================
+
+        // Load all admins
+        async function loadAdmins() {
+          try {
+            const response = await fetch('/admin/api/admins');
+
+            if (!response.ok) {
+              if (response.status === 403) {
+                document.getElementById('adminsTableBody').innerHTML =
+                  '<tr><td colspan="7" style="text-align: center; color: red;">Accès refusé - Super admin requis</td></tr>';
+                return;
+              }
+              throw new Error('Erreur lors du chargement des administrateurs');
+            }
+
+            const admins = await response.json();
+
+            if (admins.length === 0) {
+              document.getElementById('adminsTableBody').innerHTML =
+                '<tr><td colspan="7" style="text-align: center;">Aucun administrateur trouvé</td></tr>';
+              return;
+            }
+
+            const formatDate = (date) => {
+              if (!date) return '-';
+              const d = new Date(date);
+              const day = String(d.getDate()).padStart(2, '0');
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const year = d.getFullYear();
+              const hours = String(d.getHours()).padStart(2, '0');
+              const minutes = String(d.getMinutes()).padStart(2, '0');
+              return \`\${day}/\${month}/\${year} \${hours}:\${minutes}\`;
+            };
+
+            let html = '';
+            admins.forEach(admin => {
+              const roleBadge = admin.role === 'super_admin'
+                ? '<span class="badge badge-success">Super Admin</span>'
+                : '<span class="badge badge-info">Admin</span>';
+
+              const statusBadge = admin.isActive
+                ? '<span class="badge badge-success">Actif</span>'
+                : '<span class="badge badge-danger">Inactif</span>';
+
+              const lastLogin = formatDate(admin.lastLogin);
+              const createdAt = formatDate(admin.createdAt);
+              const adminId = admin._id.toString ? admin._id.toString() : admin._id;
+
+              // Check if this is the current user
+              const isCurrentUser = '${req.session.adminId}' === adminId;
+
+              html += \`
+                <tr>
+                  <td>\${admin.username}\${isCurrentUser ? ' <strong>(Vous)</strong>' : ''}</td>
+                  <td>\${admin.email}</td>
+                  <td>\${roleBadge}</td>
+                  <td>\${statusBadge}</td>
+                  <td>\${lastLogin}</td>
+                  <td>\${createdAt}</td>
+                  <td>
+                    \${!isCurrentUser ? \`<button class="action-btn action-btn-danger" onclick="deleteAdmin('\${adminId}', '\${admin.username}')">Supprimer</button>\` : '-'}
+                  </td>
+                </tr>
+              \`;
+            });
+
+            document.getElementById('adminsTableBody').innerHTML = html;
+          } catch (error) {
+            console.error('Erreur lors du chargement des admins:', error);
+            document.getElementById('adminsTableBody').innerHTML =
+              '<tr><td colspan="7" style="text-align: center; color: red;">Erreur lors du chargement</td></tr>';
+          }
+        }
+
+        // Delete admin
+        async function deleteAdmin(adminId, username) {
+          if (!confirm(\`Êtes-vous sûr de vouloir supprimer l'administrateur "\${username}" ?\\n\\nCette action est irréversible.\`)) {
+            return;
+          }
+
+          try {
+            const response = await fetch(\`/admin/api/admins/\${adminId}\`, {
+              method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              alert(\`Erreur: \${data.error || 'Impossible de supprimer l\\'administrateur'}\`);
+              return;
+            }
+
+            alert(\`Administrateur "\${username}" supprimé avec succès\`);
+            loadAdmins(); // Reload the admins list
+          } catch (error) {
+            console.error('Erreur lors de la suppression:', error);
+            alert('Erreur lors de la suppression de l\\'administrateur');
+          }
+        }
+
+        // ==================== End Admin Management Functions ====================
+
         // Charger la préférence au chargement de la page
         document.addEventListener('DOMContentLoaded', () => {
           const darkMode = localStorage.getItem('darkMode');
           const btn = document.querySelector('.dark-mode-btn');
-          
+
           if (darkMode === 'enabled') {
             document.body.classList.add('dark-mode');
             if (btn) btn.textContent = 'Mode Clair';
@@ -3348,6 +3493,49 @@ router.post('/api/providers/init', requireAuth, async (_req: Request, res: Respo
     res.json(providers);
   } catch (error) {
     logger.error({ error }, 'Error initializing payment providers');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== Admin Management (Super Admin Only) ====================
+
+// Get all admins (super_admin only)
+router.get('/api/admins', requireSuperAdmin, async (_req: Request, res: Response) => {
+  try {
+    const admins = await Admin.find()
+      .select('-password')
+      .sort({ createdAt: -1 });
+
+    res.json(admins);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching admins');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Delete admin (super_admin only, cannot delete yourself)
+router.delete('/api/admins/:id', requireSuperAdmin, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Prevent self-deletion
+    if (id === req.session.adminId) {
+      res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
+      return;
+    }
+
+    const admin = await Admin.findByIdAndDelete(id);
+
+    if (!admin) {
+      res.status(404).json({ error: 'Administrateur non trouvé' });
+      return;
+    }
+
+    logger.info(`Admin ${admin.username} deleted by super admin ${req.session.username}`);
+
+    res.json({ message: 'Administrateur supprimé avec succès' });
+  } catch (error) {
+    logger.error({ error }, 'Error deleting admin');
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
