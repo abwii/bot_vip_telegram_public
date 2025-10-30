@@ -35,10 +35,76 @@ interface PayPalSubscriptionResponse {
 export class PayPalService {
   private accessToken: string | null = null;
   private tokenExpiry: number = 0;
+  private readonly MAX_RETRIES = 3;
+  private readonly INITIAL_RETRY_DELAY = 1000; // 1 seconde
+
+  /**
+   * Fonction utilitaire pour retry avec backoff exponentiel
+   */
+  private async retryWithBackoff<T>(
+    operation: () => Promise<T>,
+    operationName: string,
+    maxRetries: number = this.MAX_RETRIES
+  ): Promise<T> {
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error as Error;
+
+        // Ne pas retry pour certaines erreurs définitives
+        if (error instanceof Error) {
+          const message = error.message.toLowerCase();
+          // Erreurs 400 (bad request), 401 (unauthorized), 404 (not found) ne doivent pas être retryées
+          // Ces erreurs sont définitives et ne seront pas résolues par un retry
+          if (message.includes('400') || message.includes('401') || message.includes('404')) {
+            logger.warn({
+              operation: operationName,
+              attempt,
+              error: message
+            }, 'Non-retryable error detected (400/401/404), aborting retries');
+            throw error;
+          }
+
+          // Pour les autres erreurs (403, 500, 502, 503, timeout, network), on continue avec retry
+          logger.info({
+            operation: operationName,
+            attempt,
+            error: message
+          }, 'Retryable error detected (403/5xx/timeout/network)');
+        }
+
+        if (attempt < maxRetries) {
+          // Backoff exponentiel : 1s, 2s, 4s
+          const delay = this.INITIAL_RETRY_DELAY * Math.pow(2, attempt - 1);
+          logger.warn({
+            operation: operationName,
+            attempt,
+            maxRetries,
+            nextRetryIn: delay,
+            error: lastError.message
+          }, `${operationName} failed, retrying...`);
+
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    logger.error({
+      operation: operationName,
+      attempts: maxRetries,
+      finalError: lastError?.message
+    }, `${operationName} failed after ${maxRetries} attempts`);
+
+    throw lastError;
+  }
 
   async getAccessToken(): Promise<string> {
     // Vérifier si le token est encore valide
     if (this.accessToken && Date.now() < this.tokenExpiry) {
+      logger.debug('Using cached PayPal access token');
       return this.accessToken;
     }
 
@@ -51,6 +117,18 @@ export class PayPalService {
 
     logger.info('Requesting new PayPal access token...');
 
+    // Utiliser retry avec backoff pour l'authentification
+    return await this.retryWithBackoff(
+      () => this.performAuthentication(),
+      'PayPal Authentication',
+      3 // 3 tentatives pour l'auth
+    );
+  }
+
+  /**
+   * Effectue l'authentification PayPal (appelé par retryWithBackoff)
+   */
+  private async performAuthentication(): Promise<string> {
     const auth = Buffer.from(
       `${config.paypal.clientId}:${config.paypal.clientSecret}`
     ).toString('base64');
@@ -92,6 +170,11 @@ export class PayPalService {
 
       if (!response.ok) {
         const errorText = await response.text();
+
+        // Invalider le token en cas d'erreur pour forcer une nouvelle auth au prochain retry
+        this.accessToken = null;
+        this.tokenExpiry = 0;
+
         logger.error({
           status: response.status,
           statusText: response.statusText,
@@ -107,7 +190,10 @@ export class PayPalService {
       this.accessToken = data.access_token;
       this.tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000; // 1 minute de marge
 
-      logger.info('PayPal access token obtained successfully');
+      logger.info({
+        expiresIn: data.expires_in,
+        tokenCachedUntil: new Date(this.tokenExpiry).toISOString()
+      }, 'PayPal access token obtained successfully');
       return this.accessToken;
     } catch (error) {
       // Si c'est déjà une erreur que nous avons lancée, la re-throw
@@ -125,32 +211,44 @@ export class PayPalService {
   }
 
   async createOrder(amount: number, currency: string, metadata: Record<string, unknown>): Promise<PayPalOrderResponse> {
+    logger.info({
+      amount,
+      currency,
+      metadata,
+      baseUrl: config.server.baseUrl,
+      paypalMode: config.paypal.mode,
+      apiBase: PAYPAL_API_BASE
+    }, 'Creating PayPal order...');
+
+    // Vérifier la configuration avant de continuer
+    if (!config.paypal.clientId || !config.paypal.clientSecret) {
+      const error = 'PayPal credentials not configured';
+      logger.error({
+        hasClientId: !!config.paypal.clientId,
+        hasClientSecret: !!config.paypal.clientSecret
+      }, error);
+      throw new Error(error);
+    }
+
+    if (!config.server.baseUrl || config.server.baseUrl === 'http://localhost:3000') {
+      logger.warn({
+        baseUrl: config.server.baseUrl
+      }, 'Warning: Using localhost baseUrl for PayPal callbacks');
+    }
+
+    // Utiliser retry pour la création de commande (erreurs 403, 500, 502, 503, timeout)
+    return await this.retryWithBackoff(
+      () => this.performCreateOrder(amount, currency, metadata),
+      'PayPal Create Order',
+      2 // 2 tentatives pour la création de commande
+    );
+  }
+
+  /**
+   * Effectue la création de commande PayPal (appelé par retryWithBackoff)
+   */
+  private async performCreateOrder(amount: number, currency: string, metadata: Record<string, unknown>): Promise<PayPalOrderResponse> {
     try {
-      logger.info({
-        amount,
-        currency,
-        metadata,
-        baseUrl: config.server.baseUrl,
-        paypalMode: config.paypal.mode,
-        apiBase: PAYPAL_API_BASE
-      }, 'Creating PayPal order...');
-
-      // Vérifier la configuration avant de continuer
-      if (!config.paypal.clientId || !config.paypal.clientSecret) {
-        const error = 'PayPal credentials not configured';
-        logger.error({
-          hasClientId: !!config.paypal.clientId,
-          hasClientSecret: !!config.paypal.clientSecret
-        }, error);
-        throw new Error(error);
-      }
-
-      if (!config.server.baseUrl || config.server.baseUrl === 'http://localhost:3000') {
-        logger.warn({
-          baseUrl: config.server.baseUrl
-        }, 'Warning: Using localhost baseUrl for PayPal callbacks');
-      }
-
       const token = await this.getAccessToken();
 
       const orderData = {
