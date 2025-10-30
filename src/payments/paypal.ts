@@ -56,24 +56,32 @@ export class PayPalService {
 
         // Ne pas retry pour certaines erreurs définitives
         if (error instanceof Error) {
-          const message = error.message.toLowerCase();
+          const message = error.message;
+          // Extraire le code d'erreur HTTP s'il existe (ex: "PayPal auth failed (403):")
+          const httpCodeMatch = message.match(/\((\d{3})\)/);
+          const httpCode = httpCodeMatch ? parseInt(httpCodeMatch[1]) : null;
+
           // Erreurs 400 (bad request), 401 (unauthorized), 404 (not found) ne doivent pas être retryées
           // Ces erreurs sont définitives et ne seront pas résolues par un retry
-          if (message.includes('400') || message.includes('401') || message.includes('404')) {
+          if (httpCode === 400 || httpCode === 401 || httpCode === 404) {
             logger.warn({
               operation: operationName,
               attempt,
-              error: message
+              httpCode,
+              error: message.substring(0, 200)
             }, 'Non-retryable error detected (400/401/404), aborting retries');
             throw error;
           }
 
           // Pour les autres erreurs (403, 500, 502, 503, timeout, network), on continue avec retry
-          logger.info({
-            operation: operationName,
-            attempt,
-            error: message
-          }, 'Retryable error detected (403/5xx/timeout/network)');
+          if (httpCode) {
+            logger.info({
+              operation: operationName,
+              attempt,
+              httpCode,
+              error: message.substring(0, 200)
+            }, 'Retryable error detected (403/5xx/timeout/network)');
+          }
         }
 
         if (attempt < maxRetries) {
