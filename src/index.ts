@@ -15,6 +15,7 @@ import { User } from './models/User';
 import { Subscription } from './models/Subscription';
 import { Payment } from './models/Payment';
 import { PricingConfig } from './models/PricingConfig';
+import { initializeDefaultPlanNames } from './models/PlanDisplayName';
 import adminRoutes from './admin/routes';
 
 // Logger
@@ -75,6 +76,38 @@ function setupBasicRoutes() {
     } catch (error) {
       logger.error({ error }, 'Error fetching public pricing');
       res.status(500).json({ error: 'Error fetching pricing' });
+    }
+  });
+
+  // Public API - Get plan display names (no authentication required)
+  app.get('/api/plans', async (_req: Request, res: Response) => {
+    try {
+      const { PlanDisplayName } = await import('./models/PlanDisplayName');
+      const planNames = await PlanDisplayName.find({ isActive: true }).sort({ sortOrder: 1 });
+      const prices = await PricingConfig.find({ provider: 'all' }).sort({ plan: 1 });
+
+      // Combiner les noms et les prix
+      const plansWithPrices = planNames.map(planName => {
+        const price = prices.find(p => p.plan === planName.plan);
+        return {
+          plan: planName.plan,
+          displayName: planName.displayName,
+          emoji: planName.emoji,
+          description: planName.description,
+          features: planName.features,
+          price: price?.price || 0,
+          currency: price?.currency || 'EUR',
+          duration: planName.plan === 'monthly' ? '1 mois' :
+                    planName.plan === 'quarterly' ? '3 mois' :
+                    planName.plan === 'sixmonth' ? '6 mois' : '12 mois',
+          sortOrder: planName.sortOrder,
+        };
+      });
+
+      res.json(plansWithPrices);
+    } catch (error) {
+      logger.error({ error }, 'Error fetching plan names');
+      res.status(500).json({ error: 'Error fetching plan names' });
     }
   });
 
@@ -347,7 +380,7 @@ async function processPayPalPayment(orderId: string): Promise<void> {
     await payment.save();
 
     // Créer l'abonnement et accorder l'accès VIP
-    const durations = { monthly: 30, quarterly: 90, yearly: 365 };
+    const durations = { monthly: 30, quarterly: 90, sixmonth: 180, yearly: 365 };
     await bot.vipManager.grantVipAccess(telegramId, durations[plan as keyof typeof durations]);
 
     const startDate = new Date();
@@ -408,7 +441,7 @@ async function handlePayPalPaymentCompleted(event: any): Promise<void> {
   await payment.save();
 
   // Créer l'abonnement et accorder l'accès VIP
-  const durations = { monthly: 30, quarterly: 90, yearly: 365 };
+  const durations = { monthly: 30, quarterly: 90, sixmonth: 180, yearly: 365 };
   await bot.vipManager.grantVipAccess(telegramId, durations[plan as keyof typeof durations]);
 
   const startDate = new Date();
@@ -490,7 +523,7 @@ async function handleRevolutOrderCompleted(event: any): Promise<void> {
   await payment.save();
 
   // Créer l'abonnement et accorder l'accès VIP
-  const durations = { monthly: 30, quarterly: 90, yearly: 365 };
+  const durations = { monthly: 30, quarterly: 90, sixmonth: 180, yearly: 365 };
   await bot.vipManager.grantVipAccess(telegramId, durations[plan as keyof typeof durations]);
 
   const startDate = new Date();
@@ -543,7 +576,7 @@ async function handleStripeCheckoutCompleted(event: any): Promise<void> {
   await payment.save();
 
   // Créer l'abonnement et accorder l'accès VIP
-  const durations = { monthly: 30, quarterly: 90, yearly: 365 };
+  const durations = { monthly: 30, quarterly: 90, sixmonth: 180, yearly: 365 };
   await bot.vipManager.grantVipAccess(telegramId, durations[plan as keyof typeof durations]);
 
   const startDate = new Date();
@@ -588,6 +621,11 @@ async function main(): Promise<void> {
     logger.info('Connecting to MongoDB...');
     await mongoose.connect(config.database.mongoUri);
     logger.info('Connected to MongoDB');
+
+    // Initialiser les noms de plans par défaut
+    logger.info('Initializing default plan names...');
+    await initializeDefaultPlanNames();
+    logger.info('Plan names initialized');
 
     // Configurer les sessions avec MongoDB store (après la connexion MongoDB)
     app.use(

@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export type SubscriptionStatus = 'active' | 'expired' | 'cancelled' | 'pending';
-export type SubscriptionPlan = 'monthly' | 'quarterly' | 'yearly';
+export type SubscriptionPlan = 'monthly' | 'quarterly' | 'sixmonth' | 'yearly';
 
 export interface ISubscription extends Document {
   userId: mongoose.Types.ObjectId;
@@ -32,7 +32,7 @@ const SubscriptionSchema: Schema = new Schema(
     },
     plan: {
       type: String,
-      enum: ['monthly', 'quarterly', 'yearly'],
+      enum: ['monthly', 'quarterly', 'sixmonth', 'yearly'],
       required: true,
     },
     status: {

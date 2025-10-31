@@ -10,6 +10,7 @@ import { paypalService } from '../payments/paypal';
 import { revolutService } from '../payments/revolut';
 import { stripeService } from '../payments/stripe';
 import { logger } from '../index';
+import { PLAN_DISPLAY_NAMES, PLAN_SHORT_DESCRIPTIONS } from '../utils/planDisplayNames';
 
 export class TelegramBot {
   public bot: Telegraf;
@@ -48,7 +49,7 @@ export class TelegramBot {
   }
 
   // Helper method to get prices from database
-  private async getPrices(provider: 'paypal' | 'revolut' | 'stripe' = 'paypal'): Promise<{ monthly: number; quarterly: number; yearly: number }> {
+  private async getPrices(provider: 'paypal' | 'revolut' | 'stripe' = 'paypal'): Promise<{ monthly: number; quarterly: number; sixmonth: number; yearly: number }> {
     try {
       const prices = await PricingConfig.find({
         $or: [
@@ -58,7 +59,7 @@ export class TelegramBot {
       });
 
       // Prioritize provider-specific prices over 'all'
-      const getPrice = (plan: 'monthly' | 'quarterly' | 'yearly') => {
+      const getPrice = (plan: 'monthly' | 'quarterly' | 'sixmonth' | 'yearly') => {
         const providerPrice = prices.find(p => p.plan === plan && p.provider === provider);
         const allPrice = prices.find(p => p.plan === plan && p.provider === 'all');
         return providerPrice?.price ?? allPrice?.price ?? 0;
@@ -67,15 +68,17 @@ export class TelegramBot {
       return {
         monthly: getPrice('monthly'),
         quarterly: getPrice('quarterly'),
+        sixmonth: getPrice('sixmonth'),
         yearly: getPrice('yearly'),
       };
     } catch (error) {
       logger.error({ error }, 'Error fetching prices from database');
       // Fallback to default prices if database fails
       return {
-        monthly: 0.99,
-        quarterly: 24.99,
-        yearly: 89.99,
+        monthly: 29.90,
+        quarterly: 79.90,
+        sixmonth: 149.90,
+        yearly: 279.90,
       };
     }
   }
@@ -118,9 +121,10 @@ export class TelegramBot {
       await ctx.reply(
         '💎 Choisissez votre plan VIP :',
         Markup.inlineKeyboard([
-          [Markup.button.callback(`Mensuel - ${prices.monthly.toFixed(2)}€`, 'plan_monthly')],
-          [Markup.button.callback(`Trimestriel - ${prices.quarterly.toFixed(2)}€`, 'plan_quarterly')],
-          [Markup.button.callback(`Annuel - ${prices.yearly.toFixed(2)}€`, 'plan_yearly')],
+          [Markup.button.callback(`${PLAN_DISPLAY_NAMES.monthly} (${PLAN_SHORT_DESCRIPTIONS.monthly}) - ${prices.monthly.toFixed(2)}€`, 'plan_monthly')],
+          [Markup.button.callback(`${PLAN_DISPLAY_NAMES.quarterly} (${PLAN_SHORT_DESCRIPTIONS.quarterly}) - ${prices.quarterly.toFixed(2)}€`, 'plan_quarterly')],
+          [Markup.button.callback(`${PLAN_DISPLAY_NAMES.sixmonth} (${PLAN_SHORT_DESCRIPTIONS.sixmonth}) - ${prices.sixmonth.toFixed(2)}€`, 'plan_sixmonth')],
+          [Markup.button.callback(`${PLAN_DISPLAY_NAMES.yearly} (${PLAN_SHORT_DESCRIPTIONS.yearly}) - ${prices.yearly.toFixed(2)}€`, 'plan_yearly')],
         ])
       );
     });
@@ -166,23 +170,28 @@ export class TelegramBot {
     // Commande des plans
     this.bot.command('plans', async (ctx) => {
       const prices = await this.getPrices();
-      const monthlyTotal = prices.monthly * 3;
-      const yearlyTotal = prices.monthly * 12;
-      const quarterlySavings = (monthlyTotal - prices.quarterly).toFixed(2);
-      const yearlySavings = (yearlyTotal - prices.yearly).toFixed(2);
+      const rookieTotal3 = prices.monthly * 3;
+      const rookieTotal6 = prices.monthly * 6;
+      const rookieTotal12 = prices.monthly * 12;
+      const sophomoreSavings = (rookieTotal3 - prices.quarterly).toFixed(2);
+      const allstarSavings = (rookieTotal6 - prices.sixmonth).toFixed(2);
+      const mvpSavings = (rookieTotal12 - prices.yearly).toFixed(2);
 
       await ctx.reply(
         '💎 Plans VIP disponibles :\n\n' +
-        `📅 Mensuel - ${prices.monthly.toFixed(2)}€/mois\n` +
+        `${PLAN_DISPLAY_NAMES.monthly} - ${prices.monthly.toFixed(2)}€ (${PLAN_SHORT_DESCRIPTIONS.monthly})\n` +
         '• Accès complet au groupe VIP\n' +
         '• Support prioritaire\n' +
         '• Contenu exclusif\n\n' +
-        `📅 Trimestriel - ${prices.quarterly.toFixed(2)}€ (3 mois)\n` +
-        `• Économisez ${quarterlySavings}€\n` +
-        '• Tous les avantages mensuels\n\n' +
-        `📅 Annuel - ${prices.yearly.toFixed(2)}€ (12 mois)\n` +
-        `• Économisez ${yearlySavings}€\n` +
-        '• Tous les avantages mensuels\n\n' +
+        `${PLAN_DISPLAY_NAMES.quarterly} - ${prices.quarterly.toFixed(2)}€ (${PLAN_SHORT_DESCRIPTIONS.quarterly})\n` +
+        `• Économisez ${sophomoreSavings}€\n` +
+        '• Tous les avantages ROOKIE\n\n' +
+        `${PLAN_DISPLAY_NAMES.sixmonth} - ${prices.sixmonth.toFixed(2)}€ (${PLAN_SHORT_DESCRIPTIONS.sixmonth})\n` +
+        `• Économisez ${allstarSavings}€\n` +
+        '• Tous les avantages ROOKIE\n\n' +
+        `${PLAN_DISPLAY_NAMES.yearly} - ${prices.yearly.toFixed(2)}€ (${PLAN_SHORT_DESCRIPTIONS.yearly})\n` +
+        `• Économisez ${mvpSavings}€\n` +
+        '• Tous les avantages ROOKIE\n\n' +
         'Utilisez /subscribe pour commencer !'
       );
     });
@@ -296,9 +305,10 @@ export class TelegramBot {
       await ctx.reply(
         '💎 Choisissez votre plan VIP :',
         Markup.inlineKeyboard([
-          [Markup.button.callback(`Mensuel - ${prices.monthly.toFixed(2)}€`, 'plan_monthly')],
-          [Markup.button.callback(`Trimestriel - ${prices.quarterly.toFixed(2)}€`, 'plan_quarterly')],
-          [Markup.button.callback(`Annuel - ${prices.yearly.toFixed(2)}€`, 'plan_yearly')],
+          [Markup.button.callback(`${PLAN_DISPLAY_NAMES.monthly} (${PLAN_SHORT_DESCRIPTIONS.monthly}) - ${prices.monthly.toFixed(2)}€`, 'plan_monthly')],
+          [Markup.button.callback(`${PLAN_DISPLAY_NAMES.quarterly} (${PLAN_SHORT_DESCRIPTIONS.quarterly}) - ${prices.quarterly.toFixed(2)}€`, 'plan_quarterly')],
+          [Markup.button.callback(`${PLAN_DISPLAY_NAMES.sixmonth} (${PLAN_SHORT_DESCRIPTIONS.sixmonth}) - ${prices.sixmonth.toFixed(2)}€`, 'plan_sixmonth')],
+          [Markup.button.callback(`${PLAN_DISPLAY_NAMES.yearly} (${PLAN_SHORT_DESCRIPTIONS.yearly}) - ${prices.yearly.toFixed(2)}€`, 'plan_yearly')],
         ])
       );
     });
@@ -342,23 +352,28 @@ export class TelegramBot {
 
     this.bot.hears('📋 Voir les plans', async (ctx) => {
       const prices = await this.getPrices();
-      const monthlyTotal = prices.monthly * 3;
-      const yearlyTotal = prices.monthly * 12;
-      const quarterlySavings = (monthlyTotal - prices.quarterly).toFixed(2);
-      const yearlySavings = (yearlyTotal - prices.yearly).toFixed(2);
+      const rookieTotal3 = prices.monthly * 3;
+      const rookieTotal6 = prices.monthly * 6;
+      const rookieTotal12 = prices.monthly * 12;
+      const sophomoreSavings = (rookieTotal3 - prices.quarterly).toFixed(2);
+      const allstarSavings = (rookieTotal6 - prices.sixmonth).toFixed(2);
+      const mvpSavings = (rookieTotal12 - prices.yearly).toFixed(2);
 
       await ctx.reply(
         '💎 Plans VIP disponibles :\n\n' +
-        `📅 Mensuel - ${prices.monthly.toFixed(2)}€/mois\n` +
+        `${PLAN_DISPLAY_NAMES.monthly} - ${prices.monthly.toFixed(2)}€ (${PLAN_SHORT_DESCRIPTIONS.monthly})\n` +
         '• Accès complet au groupe VIP\n' +
         '• Support prioritaire\n' +
         '• Contenu exclusif\n\n' +
-        `📅 Trimestriel - ${prices.quarterly.toFixed(2)}€ (3 mois)\n` +
-        `• Économisez ${quarterlySavings}€\n` +
-        '• Tous les avantages mensuels\n\n' +
-        `📅 Annuel - ${prices.yearly.toFixed(2)}€ (12 mois)\n` +
-        `• Économisez ${yearlySavings}€\n` +
-        '• Tous les avantages mensuels\n\n' +
+        `${PLAN_DISPLAY_NAMES.quarterly} - ${prices.quarterly.toFixed(2)}€ (${PLAN_SHORT_DESCRIPTIONS.quarterly})\n` +
+        `• Économisez ${sophomoreSavings}€\n` +
+        '• Tous les avantages ROOKIE\n\n' +
+        `${PLAN_DISPLAY_NAMES.sixmonth} - ${prices.sixmonth.toFixed(2)}€ (${PLAN_SHORT_DESCRIPTIONS.sixmonth})\n` +
+        `• Économisez ${allstarSavings}€\n` +
+        '• Tous les avantages ROOKIE\n\n' +
+        `${PLAN_DISPLAY_NAMES.yearly} - ${prices.yearly.toFixed(2)}€ (${PLAN_SHORT_DESCRIPTIONS.yearly})\n` +
+        `• Économisez ${mvpSavings}€\n` +
+        '• Tous les avantages ROOKIE\n\n' +
         'Utilisez /subscribe pour commencer !'
       );
     });
@@ -409,8 +424,8 @@ export class TelegramBot {
     });
 
     // Gestion des callbacks pour les plans
-    this.bot.action(/plan_(monthly|quarterly|yearly)/, async (ctx) => {
-      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'yearly';
+    this.bot.action(/plan_(monthly|quarterly|sixmonth|yearly)/, async (ctx) => {
+      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'sixmonth' | 'yearly';
 
       await ctx.answerCbQuery();
 
@@ -436,8 +451,8 @@ export class TelegramBot {
     });
 
     // Gestion des paiements PayPal
-    this.bot.action(/payment_paypal_(monthly|quarterly|yearly)/, async (ctx) => {
-      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'yearly';
+    this.bot.action(/payment_paypal_(monthly|quarterly|sixmonth|yearly)/, async (ctx) => {
+      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'sixmonth' | 'yearly';
       const user = ctx.from;
       if (!user) return;
 
@@ -527,8 +542,8 @@ export class TelegramBot {
     });
 
     // Gestion des paiements Revolut
-    this.bot.action(/payment_revolut_(monthly|quarterly|yearly)/, async (ctx) => {
-      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'yearly';
+    this.bot.action(/payment_revolut_(monthly|quarterly|sixmonth|yearly)/, async (ctx) => {
+      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'sixmonth' | 'yearly';
       const user = ctx.from;
       if (!user) return;
 
@@ -565,8 +580,8 @@ export class TelegramBot {
     });
 
     // Gestion des paiements Stripe
-    this.bot.action(/payment_stripe_(monthly|quarterly|yearly)/, async (ctx) => {
-      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'yearly';
+    this.bot.action(/payment_stripe_(monthly|quarterly|sixmonth|yearly)/, async (ctx) => {
+      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'sixmonth' | 'yearly';
       const user = ctx.from;
       if (!user) return;
 
@@ -577,9 +592,17 @@ export class TelegramBot {
         const amounts = await this.getPrices('stripe');
 
         const planNames = {
-          monthly: 'Abonnement VIP Mensuel',
-          quarterly: 'Abonnement VIP Trimestriel',
-          yearly: 'Abonnement VIP Annuel',
+          monthly: `Abonnement ${PLAN_DISPLAY_NAMES.monthly}`,
+          quarterly: `Abonnement ${PLAN_DISPLAY_NAMES.quarterly}`,
+          sixmonth: `Abonnement ${PLAN_DISPLAY_NAMES.sixmonth}`,
+          yearly: `Abonnement ${PLAN_DISPLAY_NAMES.yearly}`,
+        };
+
+        const planDurations = {
+          monthly: 30,
+          quarterly: 90,
+          sixmonth: 180,
+          yearly: 365,
         };
 
         const session = await stripeService.createCheckoutSession(
@@ -590,7 +613,7 @@ export class TelegramBot {
             plan,
             username: user.username || '',
             planName: planNames[plan],
-            planDescription: `Accès VIP pour ${plan === 'monthly' ? '30' : plan === 'quarterly' ? '90' : '365'} jours`,
+            planDescription: `Accès VIP pour ${planDurations[plan]} jours`,
           }
         );
 

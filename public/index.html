@@ -45,8 +45,8 @@
 
     .plans-container {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 30px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 25px;
       margin-bottom: 60px;
     }
 
@@ -182,7 +182,7 @@
     }
 
     .telegram-button {
-      background: #0088cc;
+      background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
       color: white;
       border: none;
       padding: 15px 50px;
@@ -213,6 +213,13 @@
       opacity: 0.9;
     }
 
+    @media (max-width: 1200px) {
+      .plans-container {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+      }
+    }
+
     @media (max-width: 768px) {
       h1 {
         font-size: 2em;
@@ -224,6 +231,16 @@
 
       .plans-container {
         grid-template-columns: 1fr;
+        gap: 20px;
+      }
+
+      .plan-card {
+        padding: 30px 20px;
+      }
+
+      .featured-badge {
+        font-size: 0.7em;
+        padding: 5px 30px;
       }
     }
   </style>
@@ -231,23 +248,21 @@
 <body>
   <div class="container">
     <header>
-      <h1>Telegram VIP</h1>
-      <p class="subtitle">Description, tu peux demander le thème que tu veux pour la vitrine</p>
+      <h1>Money Time VIP</h1>
+      <!-- <p class="subtitle">Bienvenue dans l'espace VIP</p> -->
     </header>
 
     <div class="plans-container">
       <!-- Plan Mensuel -->
       <div class="plan-card">
-        <div class="plan-name">Mensuel</div>
+        <div class="plan-name">ROOKIE</div>
         <div class="plan-price">
           <span class="currency">€</span><span data-price="monthly">-.--</span>
         </div>
-        <div class="plan-duration">par mois</div>
+        <div class="plan-duration">1 mois</div>
 
         <ul class="plan-features">
           <li>Accès complet au groupe VIP</li>
-          <li>Support prioritaire</li>
-          <li>Contenu exclusif</li>
           <li>Mises à jour en temps réel</li>
           <li>Sans engagement</li>
         </ul>
@@ -258,7 +273,7 @@
       <!-- Plan Trimestriel -->
       <div class="plan-card featured">
         <div class="featured-badge">Populaire</div>
-        <div class="plan-name">Trimestriel</div>
+        <div class="plan-name">SOPHOMORE</div>
         <div class="plan-price">
           <span class="currency">€</span><span data-price="quarterly">-.--</span>
         </div>
@@ -267,9 +282,28 @@
 
         <ul class="plan-features">
           <li>Tous les avantages mensuels</li>
-          <li>Badge VIP spécial</li>
-          <li>Accès anticipé aux nouveautés</li>
           <li>Meilleur rapport qualité-prix</li>
+          <li>Sans engagement</li>
+        </ul>
+
+        <a href="#contact" class="cta-button">S'abonner</a>
+      </div>
+
+      <!-- Plan 6 Mois -->
+      <div class="plan-card">
+        <div class="plan-name">ALL STAR</div>
+        <div class="plan-price">
+          <span class="currency">€</span><span data-price="sixmonth">-.--</span>
+        </div>
+        <div class="plan-duration">6 mois</div>
+        <div class="plan-savings" data-savings="sixmonth">Économisez -€</div>
+
+        <ul class="plan-features">
+          <li>Tous les avantages mensuels</li>
+          <li>Accès anticipé aux nouveautés et aux erreurs</li>
+          <li>Support premium dédié</li>
+          <li>Économie importante</li>
+          <li>Sans engagement</li>
         </ul>
 
         <a href="#contact" class="cta-button">S'abonner</a>
@@ -277,7 +311,7 @@
 
       <!-- Plan Annuel -->
       <div class="plan-card">
-        <div class="plan-name">Annuel</div>
+        <div class="plan-name">MVP</div>
         <div class="plan-price">
           <span class="currency">€</span><span data-price="yearly">-.--</span>
         </div>
@@ -285,10 +319,11 @@
         <div class="plan-savings" data-savings="yearly">Économisez -€</div>
 
         <ul class="plan-features">
-          <li>Tous les avantages trimestriels</li>
-          <li>Badge VIP Elite</li>
+          <li>Tous les avantages précédents</li>
+          <li>Accès anticipé aux nouveautés et aux erreurs</li>
           <li>Support premium dédié</li>
           <li>Meilleure valeur</li>
+          <li>Sans engagement</li>
         </ul>
 
         <a href="#contact" class="cta-button">S'abonner</a>
@@ -300,7 +335,7 @@
       <p>Contactez notre bot Telegram pour souscrire à l'offre de votre choix</p>
       <a href="https://t.me/wassim_0584509815620315_bot" class="telegram-button">Contacter le Bot</a>
       <p style="margin-top: 20px; font-size: 0.9em; color: #999;">
-        Paiements sécurisés via PayPal et Revolut
+        Paiements sécurisés via PayPal.
       </p>
     </div>
 
@@ -371,6 +406,15 @@
           if (quarterlyElement) {
             quarterlyElement.textContent = `Économisez ${quarterlySavings}€`;
             console.log('Économies trimestrielles mises à jour:', quarterlySavings + '€');
+          }
+        }
+
+        if (priceMap.monthly && priceMap.sixmonth) {
+          const sixmonthSavings = (priceMap.monthly * 6 - priceMap.sixmonth).toFixed(2);
+          const sixmonthElement = document.querySelector('[data-savings="sixmonth"]');
+          if (sixmonthElement) {
+            sixmonthElement.textContent = `Économisez ${sixmonthSavings}€`;
+            console.log('Économies 6 mois mises à jour:', sixmonthSavings + '€');
           }
         }
 

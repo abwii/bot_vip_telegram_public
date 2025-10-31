@@ -1671,6 +1671,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
               const planLabels = {
                 monthly: 'Mensuel',
                 quarterly: 'Trimestriel',
+                sixmonth: '6 Mois',
                 yearly: 'Annuel'
               };
 
@@ -2036,6 +2037,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             const planLabels = {
               monthly: 'Mensuel',
               quarterly: 'Trimestriel',
+              sixmonth: '6 Mois',
               yearly: 'Annuel'
             };
 
@@ -2238,6 +2240,8 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           }
         }
 
+        // ==================== Initialisation ====================
+
         // Charger toutes les données au démarrage
         loadStats();
         loadUsers();
@@ -2430,6 +2434,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           const planLabels = {
             monthly: 'Mensuel',
             quarterly: 'Trimestriel',
+            sixmonth: '6 Mois',
             yearly: 'Annuel'
           };
 
@@ -3168,9 +3173,10 @@ router.post('/api/pricing/init', requireAuth, async (_req: Request, res: Respons
     }
 
     const defaultPrices = [
-      { plan: 'monthly', provider: 'all', price: 0.99, currency: 'EUR', description: 'Abonnement mensuel' },
-      { plan: 'quarterly', provider: 'all', price: 24.99, currency: 'EUR', description: 'Abonnement trimestriel' },
-      { plan: 'yearly', provider: 'all', price: 89.99, currency: 'EUR', description: 'Abonnement annuel' },
+      { plan: 'monthly', provider: 'all', price: 29.90, currency: 'EUR', description: 'Abonnement mensuel' },
+      { plan: 'quarterly', provider: 'all', price: 79.90, currency: 'EUR', description: 'Abonnement trimestriel' },
+      { plan: 'sixmonth', provider: 'all', price: 149.90, currency: 'EUR', description: 'Abonnement 6 mois' },
+      { plan: 'yearly', provider: 'all', price: 279.90, currency: 'EUR', description: 'Abonnement annuel' },
     ];
 
     const prices = await PricingConfig.insertMany(defaultPrices);
@@ -3180,6 +3186,69 @@ router.post('/api/pricing/init', requireAuth, async (_req: Request, res: Respons
     res.json(prices);
   } catch (error) {
     logger.error({ error }, 'Error initializing pricing');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== Plan Display Names Routes ====================
+
+// Get all plan display names
+router.get('/api/plan-names', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const { PlanDisplayName } = await import('../models/PlanDisplayName');
+    const planNames = await PlanDisplayName.find().sort({ sortOrder: 1 });
+    res.json(planNames);
+  } catch (error) {
+    logger.error({ error }, 'Error fetching plan names');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Update a plan display name
+router.put('/api/plan-names/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { PlanDisplayName } = await import('../models/PlanDisplayName');
+    const { invalidatePlanNamesCache } = await import('../utils/planDisplayNames');
+
+    const { displayName, emoji, description, features, isActive, sortOrder } = req.body;
+
+    const planName = await PlanDisplayName.findByIdAndUpdate(
+      req.params.id,
+      { displayName, emoji, description, features, isActive, sortOrder },
+      { new: true, runValidators: true }
+    );
+
+    if (!planName) {
+      return res.status(404).json({ error: 'Plan non trouvé' });
+    }
+
+    // Invalider le cache
+    invalidatePlanNamesCache();
+
+    logger.info({ planName }, `Plan name updated by admin ${req.session.username}`);
+
+    return res.json(planName);
+  } catch (error) {
+    logger.error({ error }, 'Error updating plan name');
+    return res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Initialize default plan names
+router.post('/api/plan-names/init', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const { initializeDefaultPlanNames } = await import('../models/PlanDisplayName');
+
+    await initializeDefaultPlanNames();
+
+    const { PlanDisplayName } = await import('../models/PlanDisplayName');
+    const planNames = await PlanDisplayName.find().sort({ sortOrder: 1 });
+
+    logger.info(`Plan names initialized by admin ${_req.session.username}`);
+
+    res.json(planNames);
+  } catch (error) {
+    logger.error({ error }, 'Error initializing plan names');
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
@@ -3402,6 +3471,7 @@ router.get('/api/export/subscriptions', requireAuth, async (req: Request, res: R
       const planLabels: any = {
         monthly: 'Mensuel',
         quarterly: 'Trimestriel',
+        sixmonth: '6 Mois',
         yearly: 'Annuel'
       };
 
