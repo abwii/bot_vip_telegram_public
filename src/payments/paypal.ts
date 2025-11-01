@@ -141,6 +141,13 @@ export class PayPalService {
       `${config.paypal.clientId}:${config.paypal.clientSecret}`
     ).toString('base64');
 
+    logger.debug({
+      apiUrl: `${PAYPAL_API_BASE}/v1/oauth2/token`,
+      mode: config.paypal.mode,
+      clientIdPrefix: config.paypal.clientId?.substring(0, 10) + '...',
+      secretPrefix: config.paypal.clientSecret?.substring(0, 5) + '...'
+    }, 'Attempting PayPal authentication');
+
     try {
       // Ajouter un timeout de 15 secondes pour l'authentification
       const controller = new AbortController();
@@ -153,6 +160,9 @@ export class PayPalService {
           headers: {
             'Authorization': `Basic ${auth}`,
             'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json',
+            'Accept-Language': 'en_US',
+            'User-Agent': 'MoneyTimeVIP/1.0.0',
           },
           body: 'grant_type=client_credentials',
           signal: controller.signal,
@@ -292,6 +302,9 @@ export class PayPalService {
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Accept-Language': 'en_US',
+              'User-Agent': 'MoneyTimeVIP/1.0.0',
             },
             body: JSON.stringify(orderData),
             signal: controller.signal,
@@ -428,6 +441,9 @@ export class PayPalService {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Accept-Language': 'en_US',
+          'User-Agent': 'MoneyTimeVIP/1.0.0',
         },
       }
     );
@@ -450,6 +466,9 @@ export class PayPalService {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Accept-Language': 'en_US',
+          'User-Agent': 'MoneyTimeVIP/1.0.0',
         },
       }
     );
@@ -470,6 +489,9 @@ export class PayPalService {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Accept-Language': 'en_US',
+        'User-Agent': 'MoneyTimeVIP/1.0.0',
       },
       body: JSON.stringify({
         plan_id: planId,
@@ -499,6 +521,9 @@ export class PayPalService {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Accept-Language': 'en_US',
+          'User-Agent': 'MoneyTimeVIP/1.0.0',
         },
         body: JSON.stringify({
           reason,
@@ -522,6 +547,9 @@ export class PayPalService {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Accept-Language': 'en_US',
+          'User-Agent': 'MoneyTimeVIP/1.0.0',
         },
         body: JSON.stringify({
           transmission_id: headers['paypal-transmission-id'],
