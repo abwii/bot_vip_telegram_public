@@ -68,12 +68,13 @@ function setupBasicRoutes() {
     try {
       // Check MongoDB connection
       const dbState = mongoose.connection.readyState;
-      const dbStatus = {
+      const dbStatusMap: Record<number, string> = {
         0: 'disconnected',
         1: 'connected',
         2: 'connecting',
         3: 'disconnecting',
-      }[dbState] || 'unknown';
+      };
+      const dbStatus = dbStatusMap[dbState] || 'unknown';
 
       const isHealthy = dbState === 1;
 
@@ -85,14 +86,14 @@ function setupBasicRoutes() {
         });
       }
 
-      res.json({
+      return res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
         database: dbStatus,
       });
     } catch (error) {
       logger.error({ error }, 'Health check error');
-      res.status(503).json({
+      return res.status(503).json({
         status: 'error',
         timestamp: new Date().toISOString(),
         error: 'Health check failed',
