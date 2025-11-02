@@ -8,12 +8,26 @@ interface StripeCheckoutResponse {
 }
 
 export class StripeService {
-  private stripe: Stripe;
+  private stripe: Stripe | null = null;
 
   constructor() {
-    this.stripe = new Stripe(config.stripe.secretKey, {
-      apiVersion: '2025-09-30.clover',
-    });
+    // Only initialize Stripe if the secret key is configured
+    if (config.stripe.secretKey) {
+      this.stripe = new Stripe(config.stripe.secretKey, {
+        apiVersion: '2025-09-30.clover',
+      });
+    }
+  }
+
+  private ensureInitialized(): Stripe {
+    if (!this.stripe) {
+      throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+    }
+    return this.stripe;
+  }
+
+  isConfigured(): boolean {
+    return this.stripe !== null;
   }
 
   async createCheckoutSession(
@@ -22,7 +36,8 @@ export class StripeService {
     metadata: Record<string, string>
   ): Promise<StripeCheckoutResponse> {
     try {
-      const session = await this.stripe.checkout.sessions.create({
+      const stripe = this.ensureInitialized();
+      const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
           {
@@ -56,7 +71,8 @@ export class StripeService {
 
   async getSession(sessionId: string): Promise<Stripe.Checkout.Session> {
     try {
-      return await this.stripe.checkout.sessions.retrieve(sessionId);
+      const stripe = this.ensureInitialized();
+      return await stripe.checkout.sessions.retrieve(sessionId);
     } catch (error) {
       logger.error({ error }, 'Stripe get session failed');
       throw new Error(`Stripe get session failed: ${(error as Error).message}`);
@@ -65,6 +81,7 @@ export class StripeService {
 
   async refundPayment(paymentIntentId: string, amount?: number): Promise<Stripe.Refund> {
     try {
+      const stripe = this.ensureInitialized();
       const refundParams: Stripe.RefundCreateParams = {
         payment_intent: paymentIntentId,
       };
@@ -73,7 +90,7 @@ export class StripeService {
         refundParams.amount = Math.round(amount * 100);
       }
 
-      return await this.stripe.refunds.create(refundParams);
+      return await stripe.refunds.create(refundParams);
     } catch (error) {
       logger.error({ error }, 'Stripe refund failed');
       throw new Error(`Stripe refund failed: ${(error as Error).message}`);
@@ -82,7 +99,8 @@ export class StripeService {
 
   verifyWebhook(payload: string | Buffer, signature: string): Stripe.Event | null {
     try {
-      return this.stripe.webhooks.constructEvent(
+      const stripe = this.ensureInitialized();
+      return stripe.webhooks.constructEvent(
         payload,
         signature,
         config.stripe.webhookSecret
@@ -95,7 +113,8 @@ export class StripeService {
 
   async getPaymentIntent(paymentIntentId: string): Promise<Stripe.PaymentIntent> {
     try {
-      return await this.stripe.paymentIntents.retrieve(paymentIntentId);
+      const stripe = this.ensureInitialized();
+      return await stripe.paymentIntents.retrieve(paymentIntentId);
     } catch (error) {
       logger.error({ error }, 'Stripe get payment intent failed');
       throw new Error(`Stripe get payment intent failed: ${(error as Error).message}`);
