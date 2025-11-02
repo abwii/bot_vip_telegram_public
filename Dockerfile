@@ -35,6 +35,9 @@ RUN pnpm install --prod --frozen-lockfile
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
 
+# Copy public directory for static files
+COPY --from=builder /app/public ./public
+
 # Expose port (configurable via ENV)
 EXPOSE 8080
 
