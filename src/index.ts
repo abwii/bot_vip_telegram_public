@@ -394,8 +394,22 @@ async function processPayPalPayment(orderId: string): Promise<void> {
 
     logger.info({ telegramId, plan, orderId }, 'Processing new PayPal payment');
 
-    // Créer le paiement
+    // Récupérer ou créer l'utilisateur
+    let user = await User.findOne({ telegramId });
+    if (!user) {
+      logger.info({ telegramId }, 'User not found, creating new user from payment');
+      user = new User({
+        telegramId,
+        username: metadata.username || `user_${telegramId}`,
+        isVip: false,
+      });
+      await user.save();
+      logger.info({ telegramId, userId: user._id }, 'User created from payment');
+    }
+
+    // Créer le paiement avec userId
     const payment = new Payment({
+      userId: user._id,
       telegramId,
       provider: 'paypal',
       externalPaymentId: orderId,
@@ -404,11 +418,6 @@ async function processPayPalPayment(orderId: string): Promise<void> {
       status: 'completed',
       metadata,
     });
-
-    const user = await User.findOne({ telegramId });
-    if (user) {
-      payment.userId = user._id as any;
-    }
 
     await payment.save();
 
@@ -455,8 +464,22 @@ async function handlePayPalPaymentCompleted(event: any): Promise<void> {
   const { telegramId, plan } = metadata;
   logger.info({ telegramId, plan }, 'Processing payment');
 
-  // Créer le paiement
+  // Récupérer ou créer l'utilisateur
+  let user = await User.findOne({ telegramId });
+  if (!user) {
+    logger.info({ telegramId }, 'User not found, creating new user from webhook');
+    user = new User({
+      telegramId,
+      username: metadata.username || `user_${telegramId}`,
+      isVip: false,
+    });
+    await user.save();
+    logger.info({ telegramId, userId: user._id }, 'User created from webhook');
+  }
+
+  // Créer le paiement avec userId
   const payment = new Payment({
+    userId: user._id,
     telegramId,
     provider: 'paypal',
     externalPaymentId: event.resource.id,
@@ -465,11 +488,6 @@ async function handlePayPalPaymentCompleted(event: any): Promise<void> {
     status: 'completed',
     metadata,
   });
-
-  const user = await User.findOne({ telegramId });
-  if (user) {
-    payment.userId = user._id as any;
-  }
 
   await payment.save();
 
@@ -537,8 +555,22 @@ async function handleRevolutOrderCompleted(event: any): Promise<void> {
   const metadata = JSON.parse((order as any).merchant_order_ext_ref);
   const { telegramId, plan } = metadata;
 
-  // Créer le paiement
+  // Récupérer ou créer l'utilisateur
+  let user = await User.findOne({ telegramId });
+  if (!user) {
+    logger.info({ telegramId }, 'User not found, creating new user from Revolut payment');
+    user = new User({
+      telegramId,
+      username: metadata.username || `user_${telegramId}`,
+      isVip: false,
+    });
+    await user.save();
+    logger.info({ telegramId, userId: user._id }, 'User created from Revolut payment');
+  }
+
+  // Créer le paiement avec userId
   const payment = new Payment({
+    userId: user._id,
     telegramId,
     provider: 'revolut',
     externalPaymentId: event.order_id,
@@ -547,11 +579,6 @@ async function handleRevolutOrderCompleted(event: any): Promise<void> {
     status: 'completed',
     metadata,
   });
-
-  const user = await User.findOne({ telegramId });
-  if (user) {
-    payment.userId = user._id as any;
-  }
 
   await payment.save();
 
@@ -590,8 +617,22 @@ async function handleStripeCheckoutCompleted(event: any): Promise<void> {
   const telegramId = parseInt(metadata.telegramId);
   const plan = metadata.plan;
 
-  // Créer le paiement
+  // Récupérer ou créer l'utilisateur
+  let user = await User.findOne({ telegramId });
+  if (!user) {
+    logger.info({ telegramId }, 'User not found, creating new user from Stripe payment');
+    user = new User({
+      telegramId,
+      username: metadata.username || `user_${telegramId}`,
+      isVip: false,
+    });
+    await user.save();
+    logger.info({ telegramId, userId: user._id }, 'User created from Stripe payment');
+  }
+
+  // Créer le paiement avec userId
   const payment = new Payment({
+    userId: user._id,
     telegramId,
     provider: 'stripe',
     externalPaymentId: session.payment_intent,
@@ -600,11 +641,6 @@ async function handleStripeCheckoutCompleted(event: any): Promise<void> {
     status: 'completed',
     metadata,
   });
-
-  const user = await User.findOne({ telegramId });
-  if (user) {
-    payment.userId = user._id as any;
-  }
 
   await payment.save();
 
