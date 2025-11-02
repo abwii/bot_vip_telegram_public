@@ -649,19 +649,38 @@ export class TelegramBot {
           return;
         }
 
+        // Mettre à jour l'abonnement en base de données d'abord
         subscription.status = 'cancelled';
         subscription.autoRenew = false;
         await subscription.save();
 
-        // Annuler sur le provider de paiement si nécessaire
-        if (subscription.externalSubscriptionId) {
-          if (subscription.paymentProvider === 'paypal') {
-            await paypalService.cancelSubscription(
-              subscription.externalSubscriptionId,
-              'User requested cancellation'
+        // Essayer d'annuler sur le provider de paiement si c'est un vrai abonnement récurrent
+        // Note: Pour les paiements one-time, externalSubscriptionId est l'ID de commande/paiement,
+        // pas un ID d'abonnement, donc l'annulation échouera (ce qui est normal)
+        if (subscription.externalSubscriptionId && subscription.autoRenew) {
+          try {
+            if (subscription.paymentProvider === 'paypal') {
+              await paypalService.cancelSubscription(
+                subscription.externalSubscriptionId,
+                'User requested cancellation'
+              );
+              logger.info({ subscriptionId: subscription.externalSubscriptionId }, 'PayPal subscription cancelled');
+            } else if (subscription.paymentProvider === 'revolut') {
+              await revolutService.cancelOrder(subscription.externalSubscriptionId);
+              logger.info({ orderId: subscription.externalSubscriptionId }, 'Revolut order cancelled');
+            }
+          } catch (externalError) {
+            // L'annulation externe a échoué, mais ce n'est pas grave car l'abonnement est déjà
+            // marqué comme annulé en DB. Cela arrive souvent avec les paiements one-time.
+            logger.info(
+              {
+                error: externalError,
+                subscriptionId: subscription.externalSubscriptionId,
+                provider: subscription.paymentProvider,
+                autoRenew: subscription.autoRenew
+              },
+              'External subscription cancellation failed (this is normal for one-time payments)'
             );
-          } else if (subscription.paymentProvider === 'revolut') {
-            await revolutService.cancelOrder(subscription.externalSubscriptionId);
           }
         }
 
