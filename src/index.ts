@@ -63,9 +63,41 @@ function setupBasicRoutes() {
     res.sendFile(path.join(__dirname, '../public/index.html'));
   });
 
-  // Health check
-  app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  // Health check with DB connectivity
+  app.get('/health', async (_req: Request, res: Response) => {
+    try {
+      // Check MongoDB connection
+      const dbState = mongoose.connection.readyState;
+      const dbStatus = {
+        0: 'disconnected',
+        1: 'connected',
+        2: 'connecting',
+        3: 'disconnecting',
+      }[dbState] || 'unknown';
+
+      const isHealthy = dbState === 1;
+
+      if (!isHealthy) {
+        return res.status(503).json({
+          status: 'unhealthy',
+          timestamp: new Date().toISOString(),
+          database: dbStatus,
+        });
+      }
+
+      res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        database: dbStatus,
+      });
+    } catch (error) {
+      logger.error({ error }, 'Health check error');
+      res.status(503).json({
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        error: 'Health check failed',
+      });
+    }
   });
 
   // Public API - Get pricing (no authentication required)

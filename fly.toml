@@ -1,0 +1,64 @@
+# fly.toml app configuration file generated for tg-vip-bot
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+
+app = "tg-vip-bot" # Change this to your app name
+primary_region = "cdg" # Paris region (change to your preferred region)
+
+# Kill signal for graceful shutdown
+kill_signal = "SIGTERM"
+kill_timeout = 30
+
+[build]
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 250
+    soft_limit = 200
+
+[[http_service.checks]]
+  interval = "15s"
+  timeout = "10s"
+  grace_period = "30s"
+  method = "GET"
+  path = "/health"
+  protocol = "http"
+  tls_skip_verify = false
+
+  [http_service.checks.headers]
+    # You can add custom headers if needed
+    # X-Custom-Header = "value"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Secrets (set these using: fly secrets set KEY=VALUE)
+# Required secrets:
+# - TELEGRAM_TOKEN
+# - VIP_CHAT_ID
+# - MONGO_URI
+# - BASE_URL
+# - SESSION_SECRET
+#
+# Optional payment provider secrets:
+# - PAYPAL_CLIENT_ID
+# - PAYPAL_CLIENT_SECRET
+# - PAYPAL_WEBHOOK_ID
+# - PAYPAL_MODE
+# - REVOLUT_API_KEY
+# - REVOLUT_WEBHOOK_SECRET
+# - STRIPE_SECRET_KEY
+# - STRIPE_WEBHOOK_SECRET
