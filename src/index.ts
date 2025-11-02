@@ -650,6 +650,14 @@ async function main(): Promise<void> {
     setupBasicRoutes();
     logger.info('Basic routes configured including payment confirmation pages');
 
+    // Log payment providers configuration
+    logger.info({
+      paypalMode: config.paypal.mode,
+      paypalConfigured: !!(config.paypal.clientId && config.paypal.clientSecret),
+      stripeConfigured: !!config.stripe.secretKey,
+      revolutConfigured: !!config.revolut.apiKey,
+    }, 'Payment providers configuration');
+
     // Connexion à MongoDB
     logger.info('Connecting to MongoDB...');
     await mongoose.connect(config.database.mongoUri);
