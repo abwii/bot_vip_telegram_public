@@ -1,0 +1,37 @@
+name: Deploy to Fly.io (Dev)
+
+on:
+  push:
+    branches:
+      - dev  # Se déclenche uniquement sur push vers dev
+  workflow_dispatch:  # Permet aussi de déclencher manuellement
+
+jobs:
+  deploy:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+
+    # Empêche les déploiements concurrents
+    concurrency:
+      group: dev-deployment
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io (Dev)
+        run: flyctl deploy --remote-only -a bot-telegram-vip
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Notify deployment success
+        if: success()
+        run: echo "✅ Deployment to dev successful!"
+
+      - name: Notify deployment failure
+        if: failure()
+        run: echo "❌ Deployment to dev failed!"
