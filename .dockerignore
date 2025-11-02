@@ -18,3 +18,9 @@ coverage
 *.md
 LICENSE
 .github
+
+# Fichiers de test et scripts
+src/test-*.ts
+scripts/
+*.test.ts
+*.spec.ts

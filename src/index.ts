@@ -151,11 +151,11 @@ function setupBasicRoutes() {
     const token = req.query.token as string;
 
     if (token) {
-      logger.info({ token }, 'Processing PayPal payment from success page');
+      logger.info('Processing PayPal payment from success page');
 
       // Traiter le paiement en arrière-plan (ne pas bloquer la réponse)
       processPayPalPayment(token).catch(error => {
-        logger.error({ error, token }, 'Failed to process PayPal payment from success page');
+        logger.error({ error }, 'Failed to process PayPal payment from success page');
       });
     }
 
