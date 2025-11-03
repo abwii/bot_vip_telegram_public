@@ -244,7 +244,20 @@ function setupBasicRoutes() {
   });
 
   // Stripe success/cancel redirects (ne nécessitent pas de sessions)
-  app.get('/payments/stripe/success', (_req: Request, res: Response) => {
+  app.get('/payments/stripe/success', async (req: Request, res: Response) => {
+    logger.info('Stripe success page accessed');
+
+    const session_id = req.query.session_id as string;
+
+    if (session_id) {
+      logger.info({ session_id }, 'Processing Stripe payment from success page');
+
+      // Traiter le paiement en arrière-plan (fallback si le webhook échoue ou est retardé)
+      processStripePayment(session_id).catch(error => {
+        logger.error({ error, session_id }, 'Failed to process Stripe payment from success page');
+      });
+    }
+
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -1005,6 +1018,93 @@ async function handleStripeChargeRefunded(event: any): Promise<void> {
   );
 
   logger.info('Stripe charge refunded:', charge.id);
+}
+
+// Process Stripe payment from success page (fallback when webhook fails)
+async function processStripePayment(sessionId: string): Promise<void> {
+  try {
+    logger.info({ sessionId }, 'Fetching Stripe session details');
+
+    // Vérifier si le paiement a déjà été traité
+    const existingPayment = await Payment.findOne({ externalPaymentId: sessionId });
+    if (existingPayment) {
+      logger.info({ sessionId }, 'Stripe payment already processed, skipping');
+      return;
+    }
+
+    // Récupérer la session Stripe
+    const session = await stripeService.getSession(sessionId);
+    logger.info({ session }, 'Stripe session details retrieved');
+
+    // Vérifier le statut
+    if (session.payment_status !== 'paid') {
+      logger.warn({ sessionId, status: session.payment_status }, 'Stripe session not paid yet');
+      return;
+    }
+
+    // Extraire les métadonnées
+    const metadata = session.metadata;
+    if (!metadata || !metadata.telegramId || !metadata.plan) {
+      logger.warn({ sessionId }, 'Missing metadata in Stripe session');
+      return;
+    }
+
+    const telegramId = parseInt(metadata.telegramId);
+    const plan = metadata.plan;
+
+    logger.info({ telegramId, plan, sessionId }, 'Processing new Stripe payment');
+
+    // Récupérer ou créer l'utilisateur
+    let user = await User.findOne({ telegramId });
+    if (!user) {
+      logger.info({ telegramId }, 'User not found, creating new user from payment');
+      user = new User({
+        telegramId,
+        username: metadata.username || `user_${telegramId}`,
+        isVip: false,
+      });
+      await user.save();
+      logger.info({ telegramId, userId: user._id }, 'User created from payment');
+    }
+
+    // Créer le paiement
+    const payment = new Payment({
+      userId: user._id,
+      telegramId,
+      provider: 'stripe',
+      externalPaymentId: sessionId,
+      amount: (session.amount_total || 0) / 100, // Convert from cents
+      currency: (session.currency || 'EUR').toUpperCase(),
+      status: 'completed',
+      metadata,
+    });
+    await payment.save();
+
+    // Créer l'abonnement et accorder l'accès VIP
+    const durations = { monthly: 30, quarterly: 90, sixmonth: 180, yearly: 365 };
+    await bot.vipManager.grantVipAccess(telegramId, durations[plan as keyof typeof durations]);
+
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + durations[plan as keyof typeof durations]);
+
+    const subscription = new Subscription({
+      userId: user._id,
+      telegramId,
+      plan,
+      status: 'active',
+      startDate,
+      endDate,
+      paymentProvider: 'stripe',
+      externalSubscriptionId: session.id,
+    });
+    await subscription.save();
+
+    logger.info({ telegramId, plan, sessionId }, '✅ VIP access granted via Stripe success page');
+  } catch (error) {
+    logger.error({ error, sessionId }, 'Error processing Stripe payment from success page');
+    throw error;
+  }
 }
 
 // Fonction principale
