@@ -3156,7 +3156,17 @@ router.put('/api/pricing/:id', requireAuth, async (req: Request, res: Response) 
 
     logger.info({ updateData }, `Pricing ${req.params.id} updated by admin ${req.session.username}`);
 
-    res.json(pricing);
+    // Ajouter un avertissement si le prix a été modifié pour un plan avec abonnements
+    const priceChanged = price !== undefined;
+    const isSubscriptionPlan = ['monthly', 'quarterly', 'sixmonth', 'yearly'].includes(pricing.plan);
+
+    const response: any = { ...pricing.toObject() };
+
+    if (priceChanged && isSubscriptionPlan) {
+      response.warning = '⚠️ Important : Ce changement de prix s\'applique uniquement aux paiements uniques. Pour les abonnements mensuels PayPal avec auto-renouvellement, vous devez également créer un nouveau plan dans votre Dashboard PayPal (https://www.paypal.com/businessmanage) avec le nouveau prix. Les abonnements existants gardent leur prix actuel.';
+    }
+
+    res.json(response);
   } catch (error) {
     logger.error({ error }, 'Error updating pricing');
     res.status(500).json({ error: 'Erreur serveur' });
