@@ -192,6 +192,53 @@ function setupBasicRoutes() {
     `);
   });
 
+  // PayPal subscription success/cancel redirects
+  app.get('/payments/paypal/subscription/success', async (req: Request, res: Response) => {
+    logger.info('PayPal subscription success page accessed');
+
+    const subscription_id = req.query.subscription_id as string;
+
+    if (subscription_id) {
+      logger.info({ subscription_id }, 'Processing PayPal subscription from success page');
+
+      // Note: L'activation de l'abonnement sera gérée par le webhook BILLING.SUBSCRIPTION.ACTIVATED
+      // qui est plus fiable que de traiter ici
+    }
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Abonnement activé</title>
+        <meta charset="UTF-8">
+      </head>
+      <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h1>✅ Abonnement activé !</h1>
+        <p>Votre abonnement mensuel a été créé avec succès.</p>
+        <p>Votre accès VIP sera activé dans quelques instants.</p>
+        <p>Vous pouvez fermer cette page et retourner sur Telegram.</p>
+      </body>
+      </html>
+    `);
+  });
+
+  app.get('/payments/paypal/subscription/cancel', (_req: Request, res: Response) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Abonnement annulé</title>
+        <meta charset="UTF-8">
+      </head>
+      <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h1>❌ Abonnement annulé</h1>
+        <p>Votre abonnement n'a pas été créé.</p>
+        <p>Vous pouvez fermer cette page et retourner sur Telegram pour réessayer.</p>
+      </body>
+      </html>
+    `);
+  });
+
   // Stripe success/cancel redirects (ne nécessitent pas de sessions)
   app.get('/payments/stripe/success', (_req: Request, res: Response) => {
     res.send(`
