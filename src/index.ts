@@ -264,6 +264,10 @@ function setupWebhooks() {
         await handlePayPalSubscriptionExpired(event);
         break;
 
+      case 'PAYMENT.SALE.COMPLETED':
+        await handlePayPalSubscriptionPayment(event);
+        break;
+
       default:
         logger.info(`Unhandled PayPal event type: ${event.event_type}`);
     }
@@ -524,7 +528,87 @@ async function handlePayPalPaymentCompletedWithErrorHandling(event: any): Promis
 }
 
 async function handlePayPalSubscriptionActivated(event: any): Promise<void> {
-  logger.info({ subscriptionId: event.resource?.id }, 'PayPal subscription activated');
+  const subscriptionId = event.resource?.id;
+  const customId = event.resource?.custom_id;
+
+  logger.info({ subscriptionId, customId }, 'PayPal subscription activated');
+
+  if (!customId) {
+    logger.warn({ subscriptionId }, 'No custom_id found in subscription activation');
+    return;
+  }
+
+  try {
+    const metadata = JSON.parse(customId);
+    const { telegramId, plan } = metadata;
+
+    logger.info({ telegramId, plan, subscriptionId }, 'Processing PayPal subscription activation');
+
+    // Récupérer ou créer l'utilisateur
+    let user = await User.findOne({ telegramId });
+    if (!user) {
+      logger.info({ telegramId }, 'User not found, creating new user from subscription');
+      user = new User({
+        telegramId,
+        username: metadata.username || `user_${telegramId}`,
+        isVip: false,
+      });
+      await user.save();
+      logger.info({ telegramId, userId: user._id }, 'User created from subscription');
+    }
+
+    // Créer le paiement
+    const payment = new Payment({
+      userId: user._id,
+      telegramId,
+      provider: 'paypal',
+      externalPaymentId: subscriptionId,
+      amount: parseFloat(event.resource?.billing_info?.last_payment?.amount?.value || '0'),
+      currency: event.resource?.billing_info?.last_payment?.amount?.currency_code || 'EUR',
+      status: 'completed',
+      metadata,
+    });
+    await payment.save();
+
+    // Créer l'abonnement et accorder l'accès VIP
+    const durations = { monthly: 30, quarterly: 90, sixmonth: 180, yearly: 365 };
+    await bot.vipManager.grantVipAccess(telegramId, durations[plan as keyof typeof durations]);
+
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + durations[plan as keyof typeof durations]);
+
+    const subscription = new Subscription({
+      userId: user._id,
+      telegramId,
+      plan,
+      status: 'active',
+      startDate,
+      endDate,
+      paymentProvider: 'paypal',
+      externalSubscriptionId: subscriptionId,
+      autoRenew: true,
+    });
+    await subscription.save();
+
+    logger.info({ telegramId, plan, subscriptionId }, '✅ VIP access granted via PayPal subscription activation');
+
+    // Notifier l'utilisateur
+    try {
+      await bot.bot.telegram.sendMessage(
+        telegramId,
+        `✅ Votre abonnement PayPal avec auto-renouvellement a été activé !\n\n` +
+        `📦 Plan : ${plan}\n` +
+        `📅 Expire le : ${endDate.toLocaleDateString('fr-FR')}\n` +
+        `🔄 Auto-renouvellement : Activé\n\n` +
+        `Votre accès VIP est maintenant actif. Bienvenue !`
+      );
+    } catch (error) {
+      logger.error({ error, telegramId }, 'Failed to send subscription activation notification');
+    }
+  } catch (error) {
+    logger.error({ error, subscriptionId }, 'Error processing PayPal subscription activation');
+  }
 }
 
 async function handlePayPalSubscriptionCancelled(event: any): Promise<void> {
@@ -543,10 +627,98 @@ async function handlePayPalSubscriptionExpired(event: any): Promise<void> {
 
   await Subscription.updateMany(
     { externalSubscriptionId: subscriptionId },
-    { status: 'expired' }
+    { status: 'expired', autoRenew: false }
   );
 
+  // Notifier l'utilisateur
+  const subscription = await Subscription.findOne({ externalSubscriptionId: subscriptionId });
+  if (subscription) {
+    try {
+      await bot.bot.telegram.sendMessage(
+        subscription.telegramId,
+        `❌ Votre abonnement PayPal a expiré.\n\n` +
+        `📦 Plan : ${subscription.plan}\n` +
+        `Votre accès VIP a pris fin. Utilisez /subscribe pour renouveler.`
+      );
+    } catch (error) {
+      logger.error({ error, telegramId: subscription.telegramId }, 'Failed to send expiration notification');
+    }
+  }
+
   logger.info('PayPal subscription expired:', subscriptionId);
+}
+
+async function handlePayPalSubscriptionPayment(event: any): Promise<void> {
+  const billingAgreementId = event.resource?.billing_agreement_id;
+
+  if (!billingAgreementId) {
+    logger.warn('No billing_agreement_id found in PayPal payment event');
+    return;
+  }
+
+  logger.info({ billingAgreementId }, 'PayPal subscription payment received');
+
+  try {
+    // Trouver l'abonnement correspondant
+    const subscription = await Subscription.findOne({
+      externalSubscriptionId: billingAgreementId,
+      status: 'active',
+      autoRenew: true
+    });
+
+    if (!subscription) {
+      logger.warn({ billingAgreementId }, 'No active subscription found for this billing agreement');
+      return;
+    }
+
+    const { telegramId, plan } = subscription;
+
+    // Créer un enregistrement de paiement
+    const user = await User.findOne({ telegramId });
+    if (user) {
+      const payment = new Payment({
+        userId: user._id,
+        telegramId,
+        provider: 'paypal',
+        externalPaymentId: event.resource?.id,
+        amount: parseFloat(event.resource?.amount?.total || '0'),
+        currency: event.resource?.amount?.currency || 'EUR',
+        status: 'completed',
+        metadata: { type: 'subscription_renewal', plan },
+      });
+      await payment.save();
+    }
+
+    // Prolonger l'accès VIP
+    const durations = { monthly: 30, quarterly: 90, sixmonth: 180, yearly: 365 };
+    const duration = durations[plan as keyof typeof durations];
+
+    await bot.vipManager.grantVipAccess(telegramId, duration);
+
+    // Mettre à jour la date de fin de l'abonnement
+    const newEndDate = new Date(subscription.endDate);
+    newEndDate.setDate(newEndDate.getDate() + duration);
+    subscription.endDate = newEndDate;
+    await subscription.save();
+
+    logger.info({ telegramId, plan, newEndDate }, '✅ VIP access renewed via PayPal subscription payment');
+
+    // Notifier l'utilisateur
+    try {
+      await bot.bot.telegram.sendMessage(
+        telegramId,
+        `✅ Votre abonnement PayPal a été renouvelé !\n\n` +
+        `📦 Plan : ${plan}\n` +
+        `📅 Nouvelle date d'expiration : ${newEndDate.toLocaleDateString('fr-FR')}\n` +
+        `🔄 Auto-renouvellement : Activé\n\n` +
+        `Merci de votre confiance !`
+      );
+    } catch (error) {
+      logger.error({ error, telegramId }, 'Failed to send renewal notification');
+    }
+  } catch (error) {
+    logger.error({ error, billingAgreementId }, 'Error processing PayPal subscription payment');
+  }
 }
 
 // Handlers pour Revolut

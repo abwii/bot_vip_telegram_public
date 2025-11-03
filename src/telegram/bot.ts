@@ -427,14 +427,34 @@ export class TelegramBot {
       );
     });
 
-    // Gestion des paiements PayPal
+    // Gestion des paiements PayPal - Demande du choix d'auto-renouvellement
     this.bot.action(/payment_paypal_(monthly|quarterly|sixmonth|yearly)/, async (ctx) => {
+      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'sixmonth' | 'yearly';
+
+      await ctx.answerCbQuery();
+
+      // Demander à l'utilisateur s'il souhaite activer l'auto-renouvellement
+      await ctx.reply(
+        '🔄 Auto-renouvellement\n\n' +
+        'Souhaitez-vous activer l\'auto-renouvellement pour votre abonnement ?\n\n' +
+        '✅ Avec auto-renouvellement : Votre abonnement sera renouvelé automatiquement chaque mois/période.\n' +
+        '❌ Sans auto-renouvellement : Paiement unique, vous devrez renouveler manuellement.',
+        Markup.inlineKeyboard([
+          [Markup.button.callback('✅ Avec auto-renouvellement', `paypal_autorenew_yes_${plan}`)],
+          [Markup.button.callback('❌ Sans auto-renouvellement', `paypal_autorenew_no_${plan}`)],
+          [Markup.button.callback('⬅️ Retour', 'payment_cancel')],
+        ])
+      );
+    });
+
+    // Gestion du paiement PayPal AVEC auto-renouvellement (abonnement)
+    this.bot.action(/paypal_autorenew_yes_(monthly|quarterly|sixmonth|yearly)/, async (ctx) => {
       const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'sixmonth' | 'yearly';
       const user = ctx.from;
       if (!user) return;
 
       await ctx.answerCbQuery();
-      await ctx.reply('⏳ Création de votre commande PayPal...');
+      await ctx.reply('⏳ Création de votre abonnement PayPal avec auto-renouvellement...');
 
       try {
         const amounts = await this.getPrices('paypal');
@@ -443,8 +463,117 @@ export class TelegramBot {
           userId: user.id,
           username: user.username,
           plan,
-          amount: amounts[plan]
-        }, 'User initiating PayPal payment');
+          amount: amounts[plan],
+          autoRenew: true
+        }, 'User initiating PayPal subscription with auto-renewal');
+
+        // Récupérer le plan ID PayPal depuis la configuration
+        const planIds: Record<string, string | undefined> = {
+          monthly: config.paypal.planIds?.monthly,
+          quarterly: config.paypal.planIds?.quarterly,
+          sixmonth: config.paypal.planIds?.sixmonth,
+          yearly: config.paypal.planIds?.yearly,
+        };
+
+        const planId = planIds[plan];
+
+        if (!planId) {
+          logger.error({ plan }, 'PayPal plan ID not configured for this plan');
+          await ctx.reply('❌ L\'auto-renouvellement n\'est pas encore configuré pour ce plan. Veuillez choisir le paiement sans auto-renouvellement.');
+          return;
+        }
+
+        const subscription = await paypalService.createSubscription(
+          planId,
+          {
+            telegramId: user.id,
+            plan,
+            username: user.username,
+            autoRenew: true,
+          }
+        );
+
+        const approveLink = subscription.links.find(link => link.rel === 'approve');
+
+        if (!approveLink) {
+          logger.error({
+            subscriptionId: subscription.id,
+            links: subscription.links
+          }, 'PayPal subscription created but no approve link found');
+          await ctx.reply('❌ Erreur lors de la création de l\'abonnement (pas de lien d\'approbation). Veuillez réessayer.');
+          return;
+        }
+
+        logger.info({
+          subscriptionId: subscription.id,
+          userId: user.id,
+          approveUrl: approveLink.href
+        }, 'PayPal subscription created and sent to user');
+
+        await ctx.reply(
+          `✅ Abonnement avec auto-renouvellement créé !\n\n` +
+          `Cliquez sur le lien ci-dessous pour confirmer votre abonnement :\n` +
+          `${approveLink.href}\n\n` +
+          `Une fois activé, votre accès VIP sera automatique et se renouvellera chaque période.`,
+          Markup.inlineKeyboard([
+            [Markup.button.url('💳 Activer l\'abonnement PayPal', approveLink.href)],
+            [Markup.button.callback('❌ Annuler', 'payment_cancel')],
+          ])
+        );
+      } catch (error) {
+        const errorLog: any = {
+          userId: user.id,
+          username: user.username,
+          plan,
+          autoRenew: true
+        };
+
+        let userMessage = '❌ Erreur lors de la création de l\'abonnement. Veuillez réessayer.';
+
+        if (error instanceof Error) {
+          errorLog.errorMessage = error.message;
+          errorLog.errorStack = error.stack;
+          errorLog.errorName = error.name;
+
+          if (error.message.includes('timeout')) {
+            userMessage = '❌ La demande a pris trop de temps. Vérifiez votre connexion et réessayez.';
+          } else if (error.message.includes('network') || error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
+            userMessage = '❌ Problème de connexion avec PayPal. Veuillez réessayer dans quelques instants.';
+          } else if (error.message.includes('credentials') || error.message.includes('configuration')) {
+            userMessage = '❌ Service de paiement temporairement indisponible. Veuillez contacter le support.';
+          } else if (error.message.includes('401') || error.message.includes('403')) {
+            userMessage = '❌ Problème d\'authentification avec PayPal. Veuillez contacter le support.';
+          } else if (error.message.includes('400')) {
+            userMessage = '❌ Données d\'abonnement invalides. Veuillez contacter le support.';
+          }
+        } else {
+          errorLog.errorValue = String(error);
+        }
+
+        logger.error(errorLog, 'PayPal subscription creation error in bot handler');
+        await ctx.reply(userMessage + '\n\nSi le problème persiste, contactez @abwi_pv');
+      }
+    });
+
+    // Gestion du paiement PayPal SANS auto-renouvellement (paiement unique)
+    this.bot.action(/paypal_autorenew_no_(monthly|quarterly|sixmonth|yearly)/, async (ctx) => {
+      const plan = ctx.match[1] as 'monthly' | 'quarterly' | 'sixmonth' | 'yearly';
+      const user = ctx.from;
+      if (!user) return;
+
+      await ctx.answerCbQuery();
+      await ctx.reply('⏳ Création de votre commande PayPal (paiement unique)...');
+
+      try {
+        const amounts = await this.getPrices('paypal');
+
+        logger.info({
+          userId: user.id,
+          username: user.username,
+          plan,
+          amount: amounts[plan],
+          autoRenew: false
+        }, 'User initiating PayPal one-time payment');
 
         const order = await paypalService.createOrder(
           amounts[plan],
@@ -453,6 +582,7 @@ export class TelegramBot {
             telegramId: user.id,
             plan,
             username: user.username,
+            autoRenew: false,
           }
         );
 
@@ -474,7 +604,7 @@ export class TelegramBot {
         }, 'PayPal order created and sent to user');
 
         await ctx.reply(
-          `✅ Commande créée !\n\n` +
+          `✅ Commande créée (paiement unique) !\n\n` +
           `Cliquez sur le lien ci-dessous pour payer :\n` +
           `${approveLink.href}\n\n` +
           `Une fois le paiement effectué, votre accès VIP sera activé automatiquement.`,
@@ -487,7 +617,8 @@ export class TelegramBot {
         const errorLog: any = {
           userId: user.id,
           username: user.username,
-          plan
+          plan,
+          autoRenew: false
         };
 
         let userMessage = '❌ Erreur lors de la création de la commande. Veuillez réessayer.';

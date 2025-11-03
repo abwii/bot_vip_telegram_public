@@ -22,6 +22,12 @@ interface Config {
     clientSecret: string;
     webhookId: string;
     mode: 'sandbox' | 'live';
+    planIds?: {
+      monthly?: string;
+      quarterly?: string;
+      sixmonth?: string;
+      yearly?: string;
+    };
   };
   revolut: {
     apiKey: string;
@@ -65,6 +71,12 @@ export const config: Config = {
     clientSecret: getOptionalEnvVar('PAYPAL_CLIENT_SECRET'),
     webhookId: getOptionalEnvVar('PAYPAL_WEBHOOK_ID'),
     mode: (getOptionalEnvVar('PAYPAL_MODE', 'sandbox') as 'sandbox' | 'live'),
+    planIds: {
+      monthly: getOptionalEnvVar('PAYPAL_PLAN_ID_MONTHLY') || undefined,
+      quarterly: getOptionalEnvVar('PAYPAL_PLAN_ID_QUARTERLY') || undefined,
+      sixmonth: getOptionalEnvVar('PAYPAL_PLAN_ID_SIXMONTH') || undefined,
+      yearly: getOptionalEnvVar('PAYPAL_PLAN_ID_YEARLY') || undefined,
+    },
   },
   revolut: {
     apiKey: getOptionalEnvVar('REVOLUT_API_KEY'),
