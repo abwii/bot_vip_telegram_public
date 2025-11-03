@@ -197,12 +197,16 @@ function setupBasicRoutes() {
     logger.info('PayPal subscription success page accessed');
 
     const subscription_id = req.query.subscription_id as string;
+    const ba_token = req.query.ba_token as string;
 
-    if (subscription_id) {
-      logger.info({ subscription_id }, 'Processing PayPal subscription from success page');
+    if (subscription_id || ba_token) {
+      const subId = subscription_id || ba_token;
+      logger.info({ subscription_id: subId }, 'Processing PayPal subscription from success page');
 
-      // Note: L'activation de l'abonnement sera gérée par le webhook BILLING.SUBSCRIPTION.ACTIVATED
-      // qui est plus fiable que de traiter ici
+      // Traiter l'abonnement en arrière-plan (fallback si le webhook échoue ou est retardé)
+      processPayPalSubscription(subId).catch(error => {
+        logger.error({ error, subscription_id: subId }, 'Failed to process PayPal subscription from success page');
+      });
     }
 
     res.send(`
@@ -410,6 +414,111 @@ app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (r
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+}
+
+// Process PayPal subscription from success page (fallback when webhook fails)
+async function processPayPalSubscription(subscriptionId: string): Promise<void> {
+  try {
+    logger.info({ subscriptionId }, 'Fetching PayPal subscription details');
+
+    // Vérifier si l'abonnement a déjà été traité
+    const existingSubscription = await Subscription.findOne({ externalSubscriptionId: subscriptionId });
+    if (existingSubscription) {
+      logger.info({ subscriptionId }, 'PayPal subscription already processed, skipping');
+      return;
+    }
+
+    const token = await paypalService.getAccessToken();
+    const response = await fetch(
+      `https://api-m.${config.paypal.mode === 'live' ? '' : 'sandbox.'}paypal.com/v1/billing/subscriptions/${subscriptionId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error({ subscriptionId, status: response.status, error: errorText }, 'Failed to fetch subscription details');
+      throw new Error(`Failed to fetch subscription: ${errorText}`);
+    }
+
+    const subscriptionDetails = await response.json() as any;
+    logger.info({ subscriptionDetails }, 'PayPal subscription details retrieved');
+
+    // Vérifier le statut
+    if (subscriptionDetails.status !== 'ACTIVE' && subscriptionDetails.status !== 'APPROVED') {
+      logger.warn({ subscriptionId, status: subscriptionDetails.status }, 'PayPal subscription not active/approved yet');
+      return;
+    }
+
+    // Extraire les métadonnées
+    const customId = subscriptionDetails.custom_id;
+    if (!customId) {
+      logger.warn({ subscriptionId }, 'No custom_id found in PayPal subscription');
+      return;
+    }
+
+    const metadata = JSON.parse(customId);
+    const { telegramId, plan } = metadata;
+
+    logger.info({ telegramId, plan, subscriptionId }, 'Processing new PayPal subscription');
+
+    // Récupérer ou créer l'utilisateur
+    let user = await User.findOne({ telegramId });
+    if (!user) {
+      logger.info({ telegramId }, 'User not found, creating new user from subscription');
+      user = new User({
+        telegramId,
+        username: metadata.username || `user_${telegramId}`,
+        isVip: false,
+      });
+      await user.save();
+      logger.info({ telegramId, userId: user._id }, 'User created from subscription');
+    }
+
+    // Créer le paiement
+    const payment = new Payment({
+      userId: user._id,
+      telegramId,
+      provider: 'paypal',
+      externalPaymentId: subscriptionId,
+      amount: parseFloat(subscriptionDetails.billing_info?.last_payment?.amount?.value || '0'),
+      currency: subscriptionDetails.billing_info?.last_payment?.amount?.currency_code || 'EUR',
+      status: 'completed',
+      metadata,
+    });
+    await payment.save();
+
+    // Créer l'abonnement et accorder l'accès VIP
+    const durations = { monthly: 30, quarterly: 90, sixmonth: 180, yearly: 365 };
+    await bot.vipManager.grantVipAccess(telegramId, durations[plan as keyof typeof durations]);
+
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + durations[plan as keyof typeof durations]);
+
+    const subscription = new Subscription({
+      userId: user._id,
+      telegramId,
+      plan,
+      status: 'active',
+      startDate,
+      endDate,
+      paymentProvider: 'paypal',
+      externalSubscriptionId: subscriptionId,
+      autoRenew: true,
+    });
+    await subscription.save();
+
+    logger.info({ telegramId, plan, subscriptionId }, '✅ VIP access granted via PayPal subscription success page');
+  } catch (error) {
+    logger.error({ error, subscriptionId }, 'Error processing PayPal subscription from success page');
+    throw error;
+  }
 }
 
 // Process PayPal payment from success page (fallback when webhook fails)
