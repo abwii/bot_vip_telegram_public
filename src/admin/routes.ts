@@ -809,6 +809,60 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           transition: color 0.3s ease;
         }
 
+        .chart-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+          gap: 10px;
+        }
+
+        .chart-header h3 {
+          margin: 0;
+        }
+
+        .period-selector {
+          display: flex;
+          gap: 5px;
+        }
+
+        .period-btn {
+          padding: 6px 12px;
+          border: 1px solid #ddd;
+          background: white;
+          color: #333;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 13px;
+          transition: all 0.3s ease;
+        }
+
+        .period-btn:hover {
+          background: #f5f5f5;
+        }
+
+        .period-btn.active {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          border-color: #667eea;
+        }
+
+        body.dark-mode .period-btn {
+          background: #2d3748;
+          color: #e2e8f0;
+          border-color: #4a5568;
+        }
+
+        body.dark-mode .period-btn:hover {
+          background: #374151;
+        }
+
+        body.dark-mode .period-btn.active {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border-color: #667eea;
+        }
+
         .chart-container {
           position: relative;
           height: 300px;
@@ -1276,11 +1330,6 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             <div class="value" id="completedPayments">-</div>
           </div>
           <div class="stat-card">
-            <div class="icon">📊</div>
-            <h3>Revenu Mensuel</h3>
-            <div class="value" id="monthlyIncome">-</div>
-          </div>
-          <div class="stat-card">
             <div class="icon">💵</div>
             <h3>Revenu Total</h3>
             <div class="value" id="totalIncome">-</div>
@@ -1349,14 +1398,26 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
         <div id="charts-tab" class="tab-content">
           <div class="charts-grid">
             <div class="chart-card">
-              <h3>📊 Évolution des Revenus (12 derniers mois)</h3>
+              <div class="chart-header">
+                <h3>📊 Évolution des Revenus</h3>
+                <div class="period-selector">
+                  <button class="period-btn active" data-chart="revenue" data-period="monthly">Mensuel (12 mois)</button>
+                  <button class="period-btn" data-chart="revenue" data-period="daily">Journalier (30 jours)</button>
+                </div>
+              </div>
               <div class="chart-container">
                 <canvas id="revenueChart"></canvas>
               </div>
             </div>
 
             <div class="chart-card">
-              <h3>👥 Croissance des Utilisateurs (12 derniers mois)</h3>
+              <div class="chart-header">
+                <h3>👥 Croissance des Utilisateurs</h3>
+                <div class="period-selector">
+                  <button class="period-btn active" data-chart="users" data-period="monthly">Mensuel (12 mois)</button>
+                  <button class="period-btn" data-chart="users" data-period="daily">Journalier (30 jours)</button>
+                </div>
+              </div>
               <div class="chart-container">
                 <canvas id="usersChart"></canvas>
               </div>
@@ -1582,7 +1643,6 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             document.getElementById('vipUsers').textContent = data.vipUsers;
             document.getElementById('activeSubscriptions').textContent = data.activeSubscriptions;
             document.getElementById('completedPayments').textContent = data.completedPayments;
-            document.getElementById('monthlyIncome').textContent = data.monthlyIncome ? data.monthlyIncome.toFixed(2) + '€' : '0.00€';
             document.getElementById('totalIncome').textContent = data.totalIncome ? data.totalIncome.toFixed(2) + '€' : '0.00€';
           } catch (error) {
             console.error('Erreur lors du chargement des stats:', error);
@@ -2292,24 +2352,29 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
 
         let charts = {};
 
+        let currentPeriods = {
+          revenue: 'monthly',
+          users: 'monthly'
+        };
+
         async function loadCharts() {
           // Éviter de recharger les graphiques s'ils existent déjà
           if (Object.keys(charts).length > 0) return;
 
           try {
             // Charger les données des graphiques en parallèle
-            const [revenueData, usersData, plansData, providersData] = await Promise.all([
-              fetch('/admin/api/charts/revenue').then(r => r.json()),
-              fetch('/admin/api/charts/users').then(r => r.json()),
+            const [revenueResult, usersResult, plansData, providersData] = await Promise.all([
+              fetch('/admin/api/charts/revenue?period=monthly').then(r => r.json()),
+              fetch('/admin/api/charts/users?period=monthly').then(r => r.json()),
               fetch('/admin/api/charts/plans').then(r => r.json()),
               fetch('/admin/api/charts/providers-stats').then(r => r.json())
             ]);
 
             // Graphique des revenus
-            createRevenueChart(revenueData);
+            createRevenueChart(revenueResult.data, revenueResult.period);
 
             // Graphique des utilisateurs
-            createUsersChart(usersData);
+            createUsersChart(usersResult.data, usersResult.period);
 
             // Graphique de distribution des plans
             createPlansChart(plansData);
@@ -2317,12 +2382,55 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             // Graphique des providers
             createProvidersChart(providersData);
 
+            // Ajouter les event listeners pour les boutons de période
+            setupPeriodButtons();
+
           } catch (error) {
             console.error('Erreur lors du chargement des graphiques:', error);
           }
         }
 
-        function createRevenueChart(data) {
+        function setupPeriodButtons() {
+          document.querySelectorAll('.period-btn').forEach(btn => {
+            btn.addEventListener('click', async function() {
+              const chartType = this.getAttribute('data-chart');
+              const period = this.getAttribute('data-period');
+
+              // Mettre à jour le bouton actif
+              this.parentElement.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+              this.classList.add('active');
+
+              // Recharger le graphique
+              await reloadChart(chartType, period);
+            });
+          });
+        }
+
+        async function reloadChart(chartType, period) {
+          try {
+            const result = await fetch(\`/admin/api/charts/\${chartType}?period=\${period}\`).then(r => r.json());
+
+            currentPeriods[chartType] = period;
+
+            if (chartType === 'revenue') {
+              // Détruire l'ancien graphique
+              if (charts.revenue) {
+                charts.revenue.destroy();
+              }
+              createRevenueChart(result.data, result.period);
+            } else if (chartType === 'users') {
+              // Détruire l'ancien graphique
+              if (charts.users) {
+                charts.users.destroy();
+              }
+              createUsersChart(result.data, result.period);
+            }
+          } catch (error) {
+            console.error('Erreur lors du rechargement du graphique:', error);
+          }
+        }
+
+        function createRevenueChart(data, period) {
           const ctx = document.getElementById('revenueChart');
           if (!ctx) return;
 
@@ -2331,9 +2439,15 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           const labels = [];
           const amounts = [];
 
-          // Remplir les données
+          // Remplir les données selon la période
           data.forEach(item => {
-            labels.push(\`\${monthNames[item._id.month - 1]} \${item._id.year}\`);
+            if (period === 'daily') {
+              // Format: "JJ/MM"
+              labels.push(\`\${item._id.day}/\${item._id.month}\`);
+            } else {
+              // Format: "Mois Année"
+              labels.push(\`\${monthNames[item._id.month - 1]} \${item._id.year}\`);
+            }
             amounts.push(item.total.toFixed(2));
           });
 
@@ -2373,7 +2487,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           });
         }
 
-        function createUsersChart(data) {
+        function createUsersChart(data, period) {
           const ctx = document.getElementById('usersChart');
           if (!ctx) return;
 
@@ -2383,7 +2497,13 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           const vipUsers = [];
 
           data.forEach(item => {
-            labels.push(\`\${monthNames[item._id.month - 1]} \${item._id.year}\`);
+            if (period === 'daily') {
+              // Format: "JJ/MM"
+              labels.push(\`\${item._id.day}/\${item._id.month}\`);
+            } else {
+              // Format: "Mois Année"
+              labels.push(\`\${monthNames[item._id.month - 1]} \${item._id.year}\`);
+            }
             totalUsers.push(item.total);
             vipUsers.push(item.vip);
           });
@@ -2800,7 +2920,7 @@ router.get('/api/stats', requireAuth, async (_req: Request, res: Response) => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [totalUsers, vipUsers, activeSubscriptions, completedPayments, monthlyIncomeResult, totalIncomeResult] = await Promise.all([
+    const [totalUsers, vipUsers, activeSubscriptions, completedPayments, totalIncomeResult] = await Promise.all([
       User.countDocuments(),
       User.countDocuments({ isVip: true }),
       Subscription.countDocuments({ status: 'active' }),
@@ -2834,7 +2954,6 @@ router.get('/api/stats', requireAuth, async (_req: Request, res: Response) => {
       ]),
     ]);
 
-    const monthlyIncome = monthlyIncomeResult[0]?.total || 0;
     const totalIncome = totalIncomeResult[0]?.total || 0;
 
     res.json({
@@ -2842,7 +2961,6 @@ router.get('/api/stats', requireAuth, async (_req: Request, res: Response) => {
       vipUsers,
       activeSubscriptions,
       completedPayments,
-      monthlyIncome,
       totalIncome,
     });
   } catch (error) {
@@ -3265,59 +3383,103 @@ router.post('/api/plan-names/init', requireAuth, async (_req: Request, res: Resp
 
 // ==================== Chart Data Routes ====================
 
-// Get revenue data for charts (last 12 months)
-router.get('/api/charts/revenue', requireAuth, async (_req: Request, res: Response) => {
+// Get revenue data for charts
+router.get('/api/charts/revenue', requireAuth, async (req: Request, res: Response) => {
   try {
+    const period = req.query.period as string || 'monthly'; // 'daily' or 'monthly'
     const now = new Date();
-    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    let startDate: Date;
+    let groupBy: any;
+
+    if (period === 'daily') {
+      // Last 30 days
+      startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - 29);
+      startDate.setHours(0, 0, 0, 0);
+
+      groupBy = {
+        year: { $year: '$createdAt' },
+        month: { $month: '$createdAt' },
+        day: { $dayOfMonth: '$createdAt' },
+      };
+    } else {
+      // Last 12 months
+      startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+      groupBy = {
+        year: { $year: '$createdAt' },
+        month: { $month: '$createdAt' },
+      };
+    }
 
     const revenueData = await Payment.aggregate([
       {
         $match: {
           status: 'completed',
-          createdAt: { $gte: twelveMonthsAgo },
+          createdAt: { $gte: startDate },
         },
       },
       {
         $group: {
-          _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' },
-          },
+          _id: groupBy,
           total: { $sum: '$amount' },
           count: { $sum: 1 },
         },
       },
       {
-        $sort: { '_id.year': 1, '_id.month': 1 },
+        $sort: period === 'daily'
+          ? { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
+          : { '_id.year': 1, '_id.month': 1 },
       },
     ]);
 
-    res.json(revenueData);
+    res.json({ data: revenueData, period });
   } catch (error) {
     logger.error({ error }, 'Error fetching revenue chart data');
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Get user growth data for charts (last 12 months)
-router.get('/api/charts/users', requireAuth, async (_req: Request, res: Response) => {
+// Get user growth data for charts
+router.get('/api/charts/users', requireAuth, async (req: Request, res: Response) => {
   try {
+    const period = req.query.period as string || 'monthly'; // 'daily' or 'monthly'
     const now = new Date();
-    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    let startDate: Date;
+    let groupBy: any;
+
+    if (period === 'daily') {
+      // Last 30 days
+      startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - 29);
+      startDate.setHours(0, 0, 0, 0);
+
+      groupBy = {
+        year: { $year: '$createdAt' },
+        month: { $month: '$createdAt' },
+        day: { $dayOfMonth: '$createdAt' },
+      };
+    } else {
+      // Last 12 months
+      startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+      groupBy = {
+        year: { $year: '$createdAt' },
+        month: { $month: '$createdAt' },
+      };
+    }
 
     const userData = await User.aggregate([
       {
         $match: {
-          createdAt: { $gte: twelveMonthsAgo },
+          createdAt: { $gte: startDate },
         },
       },
       {
         $group: {
-          _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' },
-          },
+          _id: groupBy,
           total: { $sum: 1 },
           vip: {
             $sum: { $cond: ['$isVip', 1, 0] },
@@ -3325,11 +3487,13 @@ router.get('/api/charts/users', requireAuth, async (_req: Request, res: Response
         },
       },
       {
-        $sort: { '_id.year': 1, '_id.month': 1 },
+        $sort: period === 'daily'
+          ? { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
+          : { '_id.year': 1, '_id.month': 1 },
       },
     ]);
 
-    res.json(userData);
+    res.json({ data: userData, period });
   } catch (error) {
     logger.error({ error }, 'Error fetching user chart data');
     res.status(500).json({ error: 'Erreur serveur' });
