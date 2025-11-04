@@ -269,7 +269,7 @@ export class TelegramBot {
         '/help - Cette aide\n\n' +
         'Moyens de paiement :\n' +
         paymentMethods + '\n\n' +
-        '❓ Besoin d\'aide ? Contactez @abwi_pv'
+        '❓ Besoin d\'aide ? Contactez '
       );
     });
 
@@ -396,7 +396,7 @@ export class TelegramBot {
         '/help - Cette aide\n\n' +
         '💳 Moyens de paiement :\n' +
         paymentMethods + '\n\n' +
-        '❓ Besoin d\'aide ? Contactez @abwi_pv'
+        '❓ Besoin d\'aide ? Contactez un responsable.'
       );
     });
 
@@ -551,7 +551,7 @@ export class TelegramBot {
         }
 
         logger.error(errorLog, 'PayPal subscription creation error in bot handler');
-        await ctx.reply(userMessage + '\n\nSi le problème persiste, contactez @abwi_pv');
+        await ctx.reply(userMessage + '\n\nSi le problème persiste, contactez un responsable.');
       }
     });
 
@@ -645,7 +645,7 @@ export class TelegramBot {
         }
 
         logger.error(errorLog, 'PayPal order creation error in bot handler');
-        await ctx.reply(userMessage + '\n\nSi le problème persiste, contactez @abwi_pv');
+        await ctx.reply(userMessage + '\n\nSi le problème persiste, contactez un responsable.');
       }
     });
 
