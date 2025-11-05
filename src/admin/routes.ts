@@ -1781,12 +1781,13 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
               const vipUntil = formatDate(user.vipUntil);
               const createdAt = formatDate(user.createdAt);
               const userId = user._id.toString ? user._id.toString() : user._id;
+              const username = user.username ? \`@\${user.username}\` : 'N/A';
 
               html += \`
                 <tr>
                   <td>\${user.telegramId}</td>
                   <td>\${user.firstName || ''} \${user.lastName || ''}</td>
-                  <td>@\${user.username || 'N/A'}</td>
+                  <td>\${username}</td>
                   <td>\${vipBadge}</td>
                   <td>\${vipUntil}</td>
                   <td>\${createdAt}</td>
@@ -1817,7 +1818,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
               return;
             }
 
-            let html = '<table><thead><tr><th>Telegram ID</th><th>Plan</th><th>Statut</th><th>Début</th><th>Fin</th><th>Provider</th><th>Auto-renouvellement</th><th>Actions</th></tr></thead><tbody>';
+            let html = '<table><thead><tr><th>Telegram ID</th><th>Nom</th><th>Plan</th><th>Statut</th><th>Début</th><th>Fin</th><th>Provider</th><th>Auto-renouvellement</th><th>Actions</th></tr></thead><tbody>';
 
             subscriptions.forEach(sub => {
               const statusBadges = {
@@ -1843,10 +1844,12 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
               };
 
               const subId = sub._id.toString ? sub._id.toString() : sub._id;
+              const userName = sub.userId ? \`\${sub.userId.firstName || ''} \${sub.userId.lastName || ''}\`.trim() || 'N/A' : 'N/A';
 
               html += \`
                 <tr>
                   <td>\${sub.telegramId}</td>
+                  <td>\${userName}</td>
                   <td>\${planLabels[sub.plan]}</td>
                   <td>\${statusBadges[sub.status]}</td>
                   <td>\${formatDate(sub.startDate)}</td>
@@ -3309,6 +3312,7 @@ router.get('/api/subscriptions', requireAuth, async (req: Request, res: Response
     }
 
     const subscriptions = await Subscription.find(query)
+      .populate('userId', 'firstName lastName username')
       .sort({ createdAt: -1 })
       .limit(Number(limit))
       .skip(Number(skip))
