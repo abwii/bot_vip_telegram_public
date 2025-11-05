@@ -7,6 +7,7 @@ import MongoStore from 'connect-mongo';
 import cookieParser from 'cookie-parser';
 import { config } from './config';
 import { TelegramBot } from './telegram/bot';
+import { setBotInstance } from './telegram/instance';
 import { schedulerService } from './scheduler/agenda';
 import { paypalService } from './payments/paypal';
 import { revolutService } from './payments/revolut';
@@ -1168,6 +1169,9 @@ async function main(): Promise<void> {
     // Démarrer le bot Telegram
     logger.info('Starting Telegram bot...');
     bot = new TelegramBot();
+
+    // Enregistrer l'instance du bot pour les routes admin
+    setBotInstance(bot);
 
     // Configurer le scheduler avec le VipManager
     schedulerService.setVipManager(bot.vipManager);

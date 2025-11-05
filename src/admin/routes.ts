@@ -7,6 +7,7 @@ import { PricingConfig } from '../models/PricingConfig';
 import { PaymentProvider } from '../models/PaymentProvider';
 import { requireAuth, requireAuthWeb, requireSuperAdmin } from '../middleware/auth';
 import { logger } from '../index';
+import { getBotInstance } from '../telegram/instance';
 
 const router: Router = Router();
 
@@ -1302,6 +1303,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           <button class="tab active" onclick="switchTab('dashboard')">📊 Tableau de bord</button>
           <button class="tab" onclick="switchTab('charts')">📈 Graphiques</button>
           <button class="tab" onclick="switchTab('exports')">📥 Exports CSV</button>
+          <button class="tab" onclick="switchTab('manual-vip')">➕ Ajouter Client VIP</button>
           ${req.session.role === 'super_admin' ? '<button class="tab" onclick="switchTab(\'admins\')">👥 Gestion Admins</button>' : ''}
         </div>
 
@@ -1498,6 +1500,103 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           </div>
         </div>
         <!-- Fin Onglet Exports CSV -->
+
+        <!-- Onglet Ajouter Client VIP Manuel -->
+        <div id="manual-vip-tab" class="tab-content">
+          <div class="section">
+            <h2>➕ Ajouter un Client VIP Manuellement</h2>
+            <p style="margin-bottom: 30px; color: var(--text-secondary);">
+              Pour les clients qui paient en liquide ou avec Paysafecard. Cette action créera un utilisateur VIP, un abonnement actif, et une facture complétée.
+            </p>
+
+            <div style="max-width: 600px; margin: 0 auto; background: var(--bg-secondary); padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px var(--shadow);">
+              <form id="manualVipForm" style="display: flex; flex-direction: column; gap: 20px;">
+                <div>
+                  <label for="telegramId" style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">
+                    Telegram ID *
+                  </label>
+                  <input
+                    type="number"
+                    id="telegramId"
+                    name="telegramId"
+                    required
+                    placeholder="Ex: 123456789"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 5px; font-size: 14px; background: var(--bg-primary); color: var(--text-primary);"
+                  />
+                  <small style="color: var(--text-tertiary); display: block; margin-top: 5px;">
+                    L'ID Telegram numérique de l'utilisateur
+                  </small>
+                </div>
+
+                <div>
+                  <label for="plan" style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">
+                    Plan d'abonnement *
+                  </label>
+                  <select
+                    id="plan"
+                    name="plan"
+                    required
+                    onchange="updateDurationFromPlan()"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 5px; font-size: 14px; background: var(--bg-primary); color: var(--text-primary);"
+                  >
+                    <option value="">-- Sélectionner un plan --</option>
+                    <option value="monthly">ROOKIE (1 mois / 30 jours)</option>
+                    <option value="quarterly">SOPHOMORE (3 mois / 90 jours)</option>
+                    <option value="sixmonth">ALL STAR (6 mois / 180 jours)</option>
+                    <option value="yearly">MVP (12 mois / 365 jours)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label for="duration" style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">
+                    Durée (en jours) *
+                  </label>
+                  <input
+                    type="number"
+                    id="duration"
+                    name="duration"
+                    required
+                    min="1"
+                    placeholder="Ex: 30"
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 5px; font-size: 14px; background: var(--bg-primary); color: var(--text-primary);"
+                  />
+                  <small style="color: var(--text-tertiary); display: block; margin-top: 5px;">
+                    Nombre de jours d'accès VIP
+                  </small>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <input
+                    type="checkbox"
+                    id="sendInviteLink"
+                    name="sendInviteLink"
+                    checked
+                    style="width: 18px; height: 18px; cursor: pointer;"
+                  />
+                  <label for="sendInviteLink" style="margin: 0; cursor: pointer; color: var(--text-primary);">
+                    Envoyer le lien d'invitation au groupe VIP
+                  </label>
+                </div>
+
+                <div id="manualVipError" style="display: none; padding: 12px; background: #fee; border: 1px solid #fcc; border-radius: 5px; color: #c33;">
+                </div>
+
+                <div id="manualVipSuccess" style="display: none; padding: 12px; background: #efe; border: 1px solid #cfc; border-radius: 5px; color: #373;">
+                </div>
+
+                <button
+                  type="submit"
+                  style="padding: 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 5px; font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s;"
+                  onmouseover="this.style.transform='translateY(-2px)'"
+                  onmouseout="this.style.transform='translateY(0)'"
+                >
+                  ➕ Créer le Client VIP
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+        <!-- Fin Onglet Ajouter Client VIP Manuel -->
 
         <!-- Onglet Gestion Admins (Super Admin Only) -->
         ${req.session.role === 'super_admin' ? `
@@ -2845,6 +2944,123 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
             if (btn) btn.textContent = 'Mode Sombre';
           }
         });
+
+        // ==================== Formulaire Client VIP Manuel ====================
+
+        // Mapper les plans à leurs durées
+        function updateDurationFromPlan() {
+          const planSelect = document.getElementById('plan');
+          const durationInput = document.getElementById('duration');
+
+          const planDurations = {
+            'monthly': 30,
+            'quarterly': 90,
+            'sixmonth': 180,
+            'yearly': 365
+          };
+
+          if (planSelect.value && planDurations[planSelect.value]) {
+            durationInput.value = planDurations[planSelect.value];
+          }
+        }
+
+        // Gérer la soumission du formulaire
+        document.getElementById('manualVipForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+
+          const errorDiv = document.getElementById('manualVipError');
+          const successDiv = document.getElementById('manualVipSuccess');
+          const submitBtn = e.target.querySelector('button[type="submit"]');
+
+          // Masquer les messages précédents
+          errorDiv.style.display = 'none';
+          successDiv.style.display = 'none';
+
+          // Récupérer les données du formulaire
+          const telegramId = parseInt(document.getElementById('telegramId').value);
+          const duration = parseInt(document.getElementById('duration').value);
+          const plan = document.getElementById('plan').value;
+          const sendInviteLink = document.getElementById('sendInviteLink').checked;
+
+          // Validation côté client
+          if (!telegramId || telegramId <= 0) {
+            errorDiv.textContent = 'Telegram ID invalide';
+            errorDiv.style.display = 'block';
+            return;
+          }
+
+          if (!duration || duration <= 0) {
+            errorDiv.textContent = 'Durée invalide';
+            errorDiv.style.display = 'block';
+            return;
+          }
+
+          if (!plan) {
+            errorDiv.textContent = 'Veuillez sélectionner un plan';
+            errorDiv.style.display = 'block';
+            return;
+          }
+
+          // Désactiver le bouton pendant la requête
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Création en cours...';
+
+          try {
+            const response = await fetch('/admin/api/manual-vip', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                telegramId,
+                duration,
+                plan,
+                inviteLink: sendInviteLink,
+              }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              // Succès
+              const vipUntil = new Date(data.data.user.vipUntil).toLocaleDateString('fr-FR');
+              let message = \`✅ Client VIP créé avec succès!\\n\\n\`;
+              message += \`📱 Telegram ID: \${data.data.user.telegramId}\\n\`;
+              message += \`📅 VIP jusqu'au: \${vipUntil}\\n\`;
+              message += \`💰 Montant: \${data.data.payment.amount} \${data.data.payment.currency}\\n\`;
+
+              if (sendInviteLink) {
+                if (data.data.inviteLinkSent) {
+                  message += \`\\n🔗 Lien d'invitation envoyé avec succès!\`;
+                } else {
+                  message += \`\\n⚠️ Attention: Le lien d'invitation n'a pas pu être envoyé. Veuillez le faire manuellement.\`;
+                }
+              }
+
+              successDiv.textContent = message;
+              successDiv.style.display = 'block';
+              successDiv.style.whiteSpace = 'pre-line';
+
+              // Réinitialiser le formulaire
+              e.target.reset();
+
+              // Recharger les stats
+              loadStats();
+            } else {
+              // Erreur
+              errorDiv.textContent = data.error || 'Une erreur est survenue';
+              errorDiv.style.display = 'block';
+            }
+          } catch (error) {
+            console.error('Error creating manual VIP client:', error);
+            errorDiv.textContent = 'Erreur de connexion au serveur';
+            errorDiv.style.display = 'block';
+          } finally {
+            // Réactiver le bouton
+            submitBtn.disabled = false;
+            submitBtn.textContent = '➕ Créer le Client VIP';
+          }
+        });
       </script>
     </body>
     </html>
@@ -3780,6 +3996,150 @@ router.delete('/api/admins/:id', requireSuperAdmin, async (req: Request, res: Re
     res.json({ message: 'Administrateur supprimé avec succès' });
   } catch (error) {
     logger.error({ error }, 'Error deleting admin');
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== Ajouter Client VIP Manuel ====================
+
+/**
+ * Créer un client VIP manuellement avec facture
+ * Pour les paiements en liquide ou paysafecard
+ */
+router.post('/api/manual-vip', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { telegramId, duration, plan, inviteLink } = req.body;
+
+    // Validation
+    if (!telegramId || !duration || !plan) {
+      res.status(400).json({ error: 'Telegram ID, durée et plan sont requis' });
+      return;
+    }
+
+    if (typeof telegramId !== 'number' || telegramId <= 0) {
+      res.status(400).json({ error: 'Telegram ID invalide' });
+      return;
+    }
+
+    if (typeof duration !== 'number' || duration <= 0) {
+      res.status(400).json({ error: 'Durée invalide' });
+      return;
+    }
+
+    const validPlans = ['monthly', 'quarterly', 'sixmonth', 'yearly'];
+    if (!validPlans.includes(plan)) {
+      res.status(400).json({ error: 'Plan invalide' });
+      return;
+    }
+
+    // Récupérer le prix du plan
+    const pricing = await PricingConfig.findOne({ plan });
+    if (!pricing) {
+      res.status(404).json({ error: 'Prix non trouvé pour ce plan' });
+      return;
+    }
+
+    // Vérifier si l'utilisateur existe déjà
+    let user = await User.findOne({ telegramId });
+    const isNewUser = !user;
+
+    // Calculer les dates
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + duration);
+
+    // Créer ou mettre à jour l'utilisateur
+    if (!user) {
+      user = new User({
+        telegramId,
+        isVip: true,
+        vipUntil: endDate,
+      });
+    } else {
+      // Si l'utilisateur a déjà un accès VIP, prolonger à partir de la date actuelle d'expiration
+      const currentExpiry = user.vipUntil && user.vipUntil > startDate ? user.vipUntil : startDate;
+      const newExpiry = new Date(currentExpiry);
+      newExpiry.setDate(newExpiry.getDate() + duration);
+
+      user.isVip = true;
+      user.vipUntil = newExpiry;
+    }
+    await user.save();
+
+    // Créer la souscription
+    const subscription = new Subscription({
+      userId: user._id,
+      telegramId: user.telegramId,
+      plan,
+      status: 'active',
+      startDate,
+      endDate: user.vipUntil,
+      autoRenew: false,
+      paymentProvider: 'test', // Utiliser 'test' pour les paiements manuels
+      externalSubscriptionId: `manual-${Date.now()}-${telegramId}`,
+    });
+    await subscription.save();
+
+    // Créer le paiement
+    const payment = new Payment({
+      userId: user._id,
+      telegramId: user.telegramId,
+      subscriptionId: subscription._id,
+      provider: 'paypal', // Provider par défaut pour les factures manuelles
+      externalPaymentId: `manual-${Date.now()}-${telegramId}`,
+      amount: pricing.price,
+      currency: 'EUR',
+      status: 'completed',
+      metadata: {
+        manual: true,
+        createdBy: req.session.username,
+        note: 'Paiement manuel (liquide/paysafecard)',
+      },
+    });
+    await payment.save();
+
+    // Générer et envoyer le lien d'invitation si demandé
+    let inviteLinkGenerated = null;
+    if (inviteLink) {
+      try {
+        const bot = getBotInstance();
+        await bot.vipManager.inviteToVipChat(telegramId);
+        inviteLinkGenerated = true;
+      } catch (error) {
+        logger.error({ error }, `Failed to send invite link to user ${telegramId}`);
+        inviteLinkGenerated = false;
+      }
+    }
+
+    logger.info(
+      `Manual VIP client created by ${req.session.username}: telegramId=${telegramId}, plan=${plan}, duration=${duration} days`
+    );
+
+    res.json({
+      success: true,
+      message: 'Client VIP créé avec succès',
+      data: {
+        isNewUser,
+        user: {
+          telegramId: user.telegramId,
+          username: user.username,
+          isVip: user.isVip,
+          vipUntil: user.vipUntil,
+        },
+        subscription: {
+          plan: subscription.plan,
+          startDate: subscription.startDate,
+          endDate: subscription.endDate,
+        },
+        payment: {
+          amount: payment.amount,
+          currency: payment.currency,
+        },
+        inviteLinkSent: inviteLinkGenerated,
+      },
+    });
+  } catch (error) {
+    logger.error({ error }, 'Error creating manual VIP client');
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
