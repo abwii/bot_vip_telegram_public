@@ -4089,7 +4089,7 @@ router.post('/api/manual-vip', requireAuth, async (req: Request, res: Response) 
       userId: user._id,
       telegramId: user.telegramId,
       subscriptionId: subscription._id,
-      provider: 'paypal', // Provider par défaut pour les factures manuelles
+      provider: 'other', // Paiement manuel (liquide/paysafecard/autre)
       externalPaymentId: `manual-${Date.now()}-${telegramId}`,
       amount: pricing.price,
       currency: 'EUR',

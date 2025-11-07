@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export type ProviderName = 'paypal' | 'revolut' | 'stripe';
+export type ProviderName = 'paypal' | 'revolut' | 'stripe' | 'other';
 
 export interface IPaymentProvider extends Document {
   name: ProviderName;
@@ -15,7 +15,7 @@ const PaymentProviderSchema: Schema = new Schema(
   {
     name: {
       type: String,
-      enum: ['paypal', 'revolut', 'stripe'],
+      enum: ['paypal', 'revolut', 'stripe', 'other'],
       required: true,
       unique: true,
       index: true,
