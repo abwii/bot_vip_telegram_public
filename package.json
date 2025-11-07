@@ -11,7 +11,9 @@
     "test:db": "tsx src/test-db.ts",
     "test:subscription": "tsx src/test-subscription.ts",
     "create-admin": "tsx src/scripts/create-admin.ts",
-    "create-admin:prod": "node dist/scripts/create-admin.js"
+    "create-admin:prod": "node dist/scripts/create-admin.js",
+    "create-vip": "tsx src/scripts/create-vip-user.ts",
+    "create-vip:prod": "node dist/scripts/create-vip-user.js"
   },
   "keywords": [],
   "author": "",
