@@ -1363,6 +1363,9 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           <div id="subscriptionsTable">
             <div class="loading">Chargement...</div>
           </div>
+          <div style="text-align: center; margin-top: 15px;">
+            <button id="seeMoreSubsBtn" class="action-btn" onclick="toggleSubscriptionsLimit()" style="font-size: 14px; padding: 8px 16px;">Voir plus</button>
+          </div>
         </div>
 
         <!-- Paiements récents -->
@@ -1370,6 +1373,9 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           <h2>💳 Paiements récents</h2>
           <div id="paymentsTable">
             <div class="loading">Chargement...</div>
+          </div>
+          <div style="text-align: center; margin-top: 15px;">
+            <button id="seeMorePaymentsBtn" class="action-btn" onclick="togglePaymentsLimit()" style="font-size: 14px; padding: 8px 16px;">Voir plus</button>
           </div>
         </div>
 
@@ -1731,6 +1737,10 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
       <script>
         let currentSubscriptionId = null;
         let currentUserId = null;
+        let subscriptionsLimit = 10;
+        let subscriptionsSkip = 0;
+        let paymentsLimit = 10;
+        let paymentsSkip = 0;
 
         // Charger les statistiques
         async function loadStats() {
@@ -1808,18 +1818,33 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
         }
 
         // Charger les abonnements
-        async function loadSubscriptions() {
+        async function loadSubscriptions(append = false) {
           try {
-            const response = await fetch('/admin/api/subscriptions?limit=10');
+            const response = await fetch(\`/admin/api/subscriptions?limit=\${subscriptionsLimit}&skip=\${subscriptionsSkip}\`);
             const subscriptions = await response.json();
 
             if (subscriptions.length === 0) {
-              document.getElementById('subscriptionsTable').innerHTML = '<div class="empty">Aucun abonnement trouvé</div>';
+              if (!append) {
+                document.getElementById('subscriptionsTable').innerHTML = '<div class="empty">Aucun abonnement trouvé</div>';
+                document.getElementById('seeMoreSubsBtn').style.display = 'none';
+              } else {
+                const btn = document.getElementById('seeMoreSubsBtn');
+                btn.textContent = 'Tout est chargé';
+                btn.disabled = true;
+              }
               return;
             }
 
-            let html = '<table><thead><tr><th>Telegram ID</th><th>Nom</th><th>Plan</th><th>Statut</th><th>Début</th><th>Fin</th><th>Provider</th><th>Auto-renouvellement</th><th>Actions</th></tr></thead><tbody>';
+            // Si on a reçu moins d'éléments que la limite, c'est qu'on est à la fin
+            if (subscriptions.length < subscriptionsLimit) {
+              const btn = document.getElementById('seeMoreSubsBtn');
+              if (btn) {
+                btn.textContent = 'Tout est chargé';
+                btn.disabled = true;
+              }
+            }
 
+            let rowsHtml = '';
             subscriptions.forEach(sub => {
               const statusBadges = {
                 active: '<span class="badge badge-success">Actif</span>',
@@ -1846,7 +1871,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
               const subId = sub._id.toString ? sub._id.toString() : sub._id;
               const userName = sub.userId ? \`\${sub.userId.firstName || ''} \${sub.userId.lastName || ''}\`.trim() || 'N/A' : 'N/A';
 
-              html += \`
+              rowsHtml += \`
                 <tr>
                   <td>\${sub.telegramId}</td>
                   <td>\${userName}</td>
@@ -1864,27 +1889,51 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
               \`;
             });
 
-            html += '</tbody></table>';
-            document.getElementById('subscriptionsTable').innerHTML = html;
+            if (append) {
+              const tbody = document.querySelector('#subscriptionsTable tbody');
+              if (tbody) {
+                tbody.insertAdjacentHTML('beforeend', rowsHtml);
+              }
+            } else {
+              let html = '<table><thead><tr><th>Telegram ID</th><th>Nom</th><th>Plan</th><th>Statut</th><th>Début</th><th>Fin</th><th>Provider</th><th>Auto-renouvellement</th><th>Actions</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>';
+              document.getElementById('subscriptionsTable').innerHTML = html;
+            }
           } catch (error) {
             console.error('Erreur lors du chargement des abonnements:', error);
-            document.getElementById('subscriptionsTable').innerHTML = '<div class="empty">Erreur lors du chargement</div>';
+            if (!append) {
+              document.getElementById('subscriptionsTable').innerHTML = '<div class="empty">Erreur lors du chargement</div>';
+            }
           }
         }
 
         // Charger les paiements
-        async function loadPayments() {
+        async function loadPayments(append = false) {
           try {
-            const response = await fetch('/admin/api/payments?limit=10');
+            const response = await fetch(\`/admin/api/payments?limit=\${paymentsLimit}&skip=\${paymentsSkip}\`);
             const payments = await response.json();
 
             if (payments.length === 0) {
-              document.getElementById('paymentsTable').innerHTML = '<div class="empty">Aucun paiement trouvé</div>';
+              if (!append) {
+                document.getElementById('paymentsTable').innerHTML = '<div class="empty">Aucun paiement trouvé</div>';
+                document.getElementById('seeMorePaymentsBtn').style.display = 'none';
+              } else {
+                const btn = document.getElementById('seeMorePaymentsBtn');
+                btn.textContent = 'Tout est chargé';
+                btn.disabled = true;
+              }
               return;
             }
 
-            let html = '<table><thead><tr><th>Telegram ID</th><th>Nom</th><th>Montant</th><th>Devise</th><th>Provider</th><th>Statut</th><th>Date</th><th>Actions</th></tr></thead><tbody>';
+            // Si on a reçu moins d'éléments que la limite, c'est qu'on est à la fin
+            if (payments.length < paymentsLimit) {
+              const btn = document.getElementById('seeMorePaymentsBtn');
+              if (btn) {
+                btn.textContent = 'Tout est chargé';
+                btn.disabled = true;
+              }
+            }
 
+            let rowsHtml = '';
             payments.forEach(payment => {
               const statusBadges = {
                 completed: '<span class="badge badge-success">Complété</span>',
@@ -1904,7 +1953,7 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
               const paymentId = payment._id.toString ? payment._id.toString() : payment._id;
               const userName = payment.userId ? \`\${payment.userId.firstName || ''} \${payment.userId.lastName || ''}\`.trim() || 'N/A' : 'N/A';
 
-              html += \`
+              rowsHtml += \`
                 <tr>
                   <td>\${payment.telegramId}</td>
                   <td>\${userName}</td>
@@ -1920,11 +1969,20 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
               \`;
             });
 
-            html += '</tbody></table>';
-            document.getElementById('paymentsTable').innerHTML = html;
+            if (append) {
+              const tbody = document.querySelector('#paymentsTable tbody');
+              if (tbody) {
+                tbody.insertAdjacentHTML('beforeend', rowsHtml);
+              }
+            } else {
+              let html = '<table><thead><tr><th>Telegram ID</th><th>Nom</th><th>Montant</th><th>Devise</th><th>Provider</th><th>Statut</th><th>Date</th><th>Actions</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>';
+              document.getElementById('paymentsTable').innerHTML = html;
+            }
           } catch (error) {
             console.error('Erreur lors du chargement des paiements:', error);
-            document.getElementById('paymentsTable').innerHTML = '<div class="empty">Erreur lors du chargement</div>';
+            if (!append) {
+              document.getElementById('paymentsTable').innerHTML = '<div class="empty">Erreur lors du chargement</div>';
+            }
           }
         }
 
@@ -2399,6 +2457,36 @@ router.get('/dashboard', requireAuthWeb, (req: Request, res: Response) => {
           } catch (error) {
             console.error('Erreur lors de la mise à jour:', error);
             alert('Erreur lors de la mise à jour');
+          }
+        }
+
+        function toggleSubscriptionsLimit() {
+          const btn = document.getElementById('seeMoreSubsBtn');
+          if (subscriptionsLimit === 10) {
+            // Passage en mode infini (100 par page)
+            subscriptionsLimit = 100;
+            subscriptionsSkip = 0;
+            loadSubscriptions(false);
+            btn.textContent = 'Charger plus...';
+          } else {
+            // Chargement de la page suivante
+            subscriptionsSkip += subscriptionsLimit;
+            loadSubscriptions(true);
+          }
+        }
+
+        function togglePaymentsLimit() {
+          const btn = document.getElementById('seeMorePaymentsBtn');
+          if (paymentsLimit === 10) {
+            // Passage en mode infini (100 par page)
+            paymentsLimit = 100;
+            paymentsSkip = 0;
+            loadPayments(false);
+            btn.textContent = 'Charger plus...';
+          } else {
+            // Chargement de la page suivante
+            paymentsSkip += paymentsLimit;
+            loadPayments(true);
           }
         }
 
