@@ -20,8 +20,61 @@ export class TelegramBot {
     this.bot = new Telegraf(config.telegram.token);
     this.vipManager = new VipManager(this.bot);
     this.setupCommands();
+    this.setupAdminCommands();
     this.setupHandlers();
     this.setupChatMemberHandlers();
+  }
+
+  private setupAdminCommands(): void {
+    // Commande pour fermer un topic (réservé aux admins)
+    this.bot.command('lock', async (ctx) => {
+      const user = ctx.from;
+      if (!user) return;
+
+      try {
+        const member = await ctx.getChatMember(user.id);
+        if (!['creator', 'administrator'].includes(member.status)) {
+          return;
+        }
+
+        const threadId = ctx.message?.message_thread_id;
+        if (!threadId) {
+          await ctx.reply('❌ Cette commande doit être utilisée dans un topic (channel) du groupe.');
+          return;
+        }
+
+        await ctx.telegram.closeForumTopic(ctx.chat.id, threadId);
+        await ctx.reply('🔒 Channel fermé. Seuls les admins peuvent parler ici.');
+      } catch (error) {
+        logger.error({ error }, 'Error locking topic');
+        await ctx.reply('❌ Erreur: Impossible de fermer ce channel. Vérifiez mes droits d\'admin.');
+      }
+    });
+
+    // Commande pour ouvrir un topic (réservé aux admins)
+    this.bot.command('unlock', async (ctx) => {
+      const user = ctx.from;
+      if (!user) return;
+
+      try {
+        const member = await ctx.getChatMember(user.id);
+        if (!['creator', 'administrator'].includes(member.status)) {
+          return;
+        }
+
+        const threadId = ctx.message?.message_thread_id;
+        if (!threadId) {
+          await ctx.reply('❌ Cette commande doit être utilisée dans un topic (channel) du groupe.');
+          return;
+        }
+
+        await ctx.telegram.reopenForumTopic(ctx.chat.id, threadId);
+        await ctx.reply('🔓 Channel ouvert. Tout le monde peut parler ici.');
+      } catch (error) {
+        logger.error({ error }, 'Error unlocking topic');
+        await ctx.reply('❌ Erreur: Impossible d\'ouvrir ce channel. Vérifiez mes droits d\'admin.');
+      }
+    });
   }
 
   // Helper method to get enabled payment providers
