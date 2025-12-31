@@ -72,9 +72,6 @@ export class SchedulerService {
           return;
         }
 
-        // Notifier 3 jours avant expiration
-        await this.vipManager.notifyExpiringVip(3);
-
         // Notifier 1 jour avant expiration
         await this.vipManager.notifyExpiringVip(1);
 

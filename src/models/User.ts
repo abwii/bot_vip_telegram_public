@@ -8,6 +8,7 @@ export interface IUser extends Document {
   isVip: boolean;
   vipUntil?: Date;
   hasUsedTrial: boolean;
+  expirationNotificationSent: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +41,10 @@ const UserSchema: Schema = new Schema(
       index: true,
     },
     hasUsedTrial: {
+      type: Boolean,
+      default: false,
+    },
+    expirationNotificationSent: {
       type: Boolean,
       default: false,
     },
