@@ -24,6 +24,7 @@ export class VipManager {
     } else {
       user.isVip = true;
       user.vipUntil = endDate;
+      user.expirationNotificationSent = false;
     }
 
     await user.save();
@@ -80,6 +81,7 @@ export class VipManager {
 
     user.isVip = true;
     user.vipUntil = newExpiry;
+    user.expirationNotificationSent = false;
     await user.save();
 
     await this.bot.telegram.sendMessage(
@@ -219,6 +221,7 @@ export class VipManager {
         $gt: new Date(),
         $lt: targetDate,
       },
+      expirationNotificationSent: { $ne: true },
     });
   }
 
@@ -231,6 +234,9 @@ export class VipManager {
           user.telegramId,
           `⚠️ Votre accès VIP expire le ${user.vipUntil?.toLocaleDateString('fr-FR')}.\n\nRenouvelez maintenant avec /subscribe pour continuer à profiter des avantages VIP !`
         );
+        
+        user.expirationNotificationSent = true;
+        await user.save();
       } catch (error) {
         logger.error({ error }, `Failed to notify user ${user.telegramId}`);
       }
