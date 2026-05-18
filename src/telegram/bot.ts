@@ -43,11 +43,19 @@ export class TelegramBot {
           return;
         }
 
-        await ctx.telegram.closeForumTopic(ctx.chat.id, threadId);
-        await ctx.reply('🔒 Channel fermé. Seuls les admins peuvent parler ici.');
+        try {
+          await ctx.telegram.closeForumTopic(ctx.chat.id, threadId);
+          await ctx.reply('🔒 Channel fermé. Seuls les admins peuvent parler ici.');
+        } catch (error: any) {
+          logger.error({ error }, 'Error locking topic');
+          if (error.response?.description?.includes('topic is already closed')) {
+            await ctx.reply('🔒 Ce channel est déjà fermé.');
+          } else {
+            await ctx.reply('❌ Erreur: Impossible de fermer ce channel. Vérifiez mes droits d\'admin (Gérer les topics).');
+          }
+        }
       } catch (error) {
-        logger.error({ error }, 'Error locking topic');
-        await ctx.reply('❌ Erreur: Impossible de fermer ce channel. Vérifiez mes droits d\'admin.');
+        logger.error({ error }, 'Error in lock command');
       }
     });
 
@@ -68,11 +76,26 @@ export class TelegramBot {
           return;
         }
 
-        await ctx.telegram.reopenForumTopic(ctx.chat.id, threadId);
-        await ctx.reply('🔓 Channel ouvert. Tout le monde peut parler ici.');
+        try {
+          await ctx.telegram.reopenForumTopic(ctx.chat.id, threadId);
+          await ctx.reply('🔓 Channel ouvert. Tout le monde peut parler ici.');
+        } catch (error: any) {
+          logger.error({ error }, 'Error unlocking topic');
+          if (error.response?.description?.includes('topic is not closed') || error.response?.description?.includes('topic is already open')) {
+            await ctx.reply(
+              '🔓 Ce channel est déjà ouvert.\n\n' +
+              '⚠️ Si les utilisateurs normaux ne peuvent toujours pas parler, c\'est un problème de permissions globales du groupe :\n' +
+              '1. Allez dans les paramètres du groupe VIP\n' +
+              '2. Allez dans "Permissions"\n' +
+              '3. Cochez "Envoyer des messages" pour tout le monde\n\n' +
+              '(Les channels que vous avez fermés avec /lock resteront inaccessibles, ne vous inquiétez pas).'
+            );
+          } else {
+            await ctx.reply('❌ Erreur: Impossible d\'ouvrir ce channel. Vérifiez mes droits d\'admin (Gérer les topics).');
+          }
+        }
       } catch (error) {
-        logger.error({ error }, 'Error unlocking topic');
-        await ctx.reply('❌ Erreur: Impossible d\'ouvrir ce channel. Vérifiez mes droits d\'admin.');
+        logger.error({ error }, 'Error in unlock command');
       }
     });
   }
