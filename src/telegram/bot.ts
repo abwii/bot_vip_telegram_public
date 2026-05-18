@@ -51,7 +51,8 @@ export class TelegramBot {
           if (error.response?.description?.includes('topic is already closed')) {
             await ctx.reply('🔒 Ce channel est déjà fermé.');
           } else {
-            await ctx.reply('❌ Erreur: Impossible de fermer ce channel. Vérifiez mes droits d\'admin (Gérer les topics).');
+            const errorMessage = error.response?.description || error.message || 'Erreur inconnue';
+            await ctx.reply(`❌ Erreur: Impossible de fermer ce channel.\nRaison: ${errorMessage}\n\n(Vérifiez mes droits d'admin: Gérer les topics)`);
           }
         }
       } catch (error) {
@@ -91,7 +92,8 @@ export class TelegramBot {
               '(Les channels que vous avez fermés avec /lock resteront inaccessibles, ne vous inquiétez pas).'
             );
           } else {
-            await ctx.reply('❌ Erreur: Impossible d\'ouvrir ce channel. Vérifiez mes droits d\'admin (Gérer les topics).');
+            const errorMessage = error.response?.description || error.message || 'Erreur inconnue';
+            await ctx.reply(`❌ Erreur: Impossible d'ouvrir ce channel.\nRaison: ${errorMessage}\n\n(Vérifiez mes droits d'admin: Gérer les topics)`);
           }
         }
       } catch (error) {
