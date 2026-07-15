@@ -42,4 +42,9 @@ Thumbs.db
 temp/
 tmp/
 
-# Other
+# Specific local/secrets files
+.env.prod
+note_perso.txt
+perso.txt
+temp_clean_clone/
+
